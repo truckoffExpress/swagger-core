@@ -29,6 +29,10 @@ import java.util.Optional;
 public class ParameterProcessor {
     static Logger LOGGER = LoggerFactory.getLogger(ParameterProcessor.class);
 
+    public static Parameter applyAnnotations(Parameter parameter, Type type, List<Annotation> annotations, Components components, String[] classTypes, String[] methodTypes, JsonView jsonViewAnnotation) {
+        return applyAnnotations(parameter, type, annotations, components, classTypes, methodTypes, jsonViewAnnotation, false);
+    }
+
     public static Parameter applyAnnotations(
             Parameter parameter,
             Type type,
@@ -36,7 +40,21 @@ public class ParameterProcessor {
             Components components,
             String[] classTypes,
             String[] methodTypes,
-            JsonView jsonViewAnnotation) {
+            JsonView jsonViewAnnotation,
+            boolean openapi31) {
+        return applyAnnotations(parameter, type, annotations, components, classTypes, methodTypes, jsonViewAnnotation, openapi31, null);
+    }
+
+    public static Parameter applyAnnotations(
+            Parameter parameter,
+            Type type,
+            List<Annotation> annotations,
+            Components components,
+            String[] classTypes,
+            String[] methodTypes,
+            JsonView jsonViewAnnotation,
+            boolean openapi31,
+            Schema.SchemaResolution schemaResolution) {
 
         final AnnotationsHelper helper = new AnnotationsHelper(annotations, type);
         if (helper.isContext()) {
@@ -54,16 +72,60 @@ public class ParameterProcessor {
         if (paramSchemaOrArrayAnnotation != null) {
             reworkedAnnotations.add(paramSchemaOrArrayAnnotation);
         }
+        io.swagger.v3.oas.annotations.media.Schema ctxSchema = AnnotationsUtils.getSchemaAnnotation(annotations.toArray(new Annotation[0]));
+        io.swagger.v3.oas.annotations.media.ArraySchema ctxArraySchema = AnnotationsUtils.getArraySchemaAnnotation(annotations.toArray(new Annotation[0]));
+        Annotation[] ctxAnnotation31 = null;
+
+        if (Schema.SchemaResolution.ALL_OF.equals(schemaResolution) || Schema.SchemaResolution.ALL_OF_REF.equals(schemaResolution)) {
+            List<Annotation> ctxAnnotations31List = new ArrayList<>();
+            if (annotations != null) {
+                for (Annotation a : annotations) {
+                    if (
+                            !(a instanceof io.swagger.v3.oas.annotations.media.Schema) &&
+                                    !(a instanceof io.swagger.v3.oas.annotations.media.ArraySchema)) {
+                        ctxAnnotations31List.add(a);
+                    }
+                }
+                ctxAnnotation31 = ctxAnnotations31List.toArray(new Annotation[ctxAnnotations31List.size()]);
+            }
+        }
         AnnotatedType annotatedType = new AnnotatedType()
                 .type(type)
                 .resolveAsRef(true)
                 .skipOverride(true)
-                .jsonViewAnnotation(jsonViewAnnotation)
-                .ctxAnnotations(reworkedAnnotations.toArray(new Annotation[reworkedAnnotations.size()]));
-        ResolvedSchema resolvedSchema = ModelConverters.getInstance().resolveAsResolvedSchema(annotatedType);
+                .jsonViewAnnotation(jsonViewAnnotation);
+
+        if (Schema.SchemaResolution.ALL_OF.equals(schemaResolution) || Schema.SchemaResolution.ALL_OF_REF.equals(schemaResolution)) {
+            annotatedType.ctxAnnotations(ctxAnnotation31);
+        } else {
+            annotatedType.ctxAnnotations(reworkedAnnotations.toArray(new Annotation[reworkedAnnotations.size()]));
+        }
+
+        final ResolvedSchema resolvedSchema = ModelConverters.getInstance(openapi31, schemaResolution).resolveAsResolvedSchema(annotatedType);
 
         if (resolvedSchema.schema != null) {
-            parameter.setSchema(resolvedSchema.schema);
+            Schema resSchema = AnnotationsUtils.clone(resolvedSchema.schema, openapi31);
+            Schema ctxSchemaObject = null;
+            if (Schema.SchemaResolution.ALL_OF.equals(schemaResolution) || Schema.SchemaResolution.ALL_OF_REF.equals(schemaResolution)) {
+                Optional<Schema> reResolvedSchema = AnnotationsUtils.getSchemaFromAnnotation(ctxSchema, annotatedType.getComponents(), null, openapi31, null, schemaResolution, null);
+                if (reResolvedSchema.isPresent()) {
+                    ctxSchemaObject = reResolvedSchema.get();
+                }
+                reResolvedSchema = AnnotationsUtils.getArraySchema(ctxArraySchema, annotatedType.getComponents(), null, openapi31, ctxSchemaObject);
+                if (reResolvedSchema.isPresent()) {
+                    ctxSchemaObject = reResolvedSchema.get();
+                }
+
+            }
+            if (Schema.SchemaResolution.ALL_OF.equals(schemaResolution) && ctxSchemaObject != null) {
+                resSchema = new Schema()
+                        .addAllOfItem(ctxSchemaObject)
+                        .addAllOfItem(resolvedSchema.schema);
+            } else if (Schema.SchemaResolution.ALL_OF_REF.equals(schemaResolution) && ctxSchemaObject != null) {
+                resSchema = ctxSchemaObject
+                        .addAllOfItem(resolvedSchema.schema);
+            }
+            parameter.setSchema(resSchema);
         }
         resolvedSchema.referencedSchemas.forEach(components::addSchemas);
 
@@ -148,7 +210,7 @@ public class ParameterProcessor {
                 }
 
                 if (p.extensions().length > 0) {
-                    Map<String, Object> extensionMap = AnnotationsUtils.getExtensions(p.extensions());
+                    Map<String, Object> extensionMap = AnnotationsUtils.getExtensions(openapi31, p.extensions());
                     if (extensionMap != null && ! extensionMap.isEmpty()) {
                         extensionMap.forEach(parameter::addExtension);
                     }
@@ -228,7 +290,7 @@ public class ParameterProcessor {
     }
 
     private static boolean isExplodable(io.swagger.v3.oas.annotations.Parameter p, Parameter parameter) {
-        io.swagger.v3.oas.annotations.media.Schema schema = p.schema();
+        io.swagger.v3.oas.annotations.media.Schema schema = AnnotationsUtils.hasArrayAnnotation(p.array()) ? p.array().schema() : p.schema();
         boolean explode = true;
         if ("form".equals(parameter.getIn())){
             return true;

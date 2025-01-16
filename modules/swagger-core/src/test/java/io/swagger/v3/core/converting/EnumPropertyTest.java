@@ -94,11 +94,11 @@ public class EnumPropertyTest {
                 "  type: object\n" +
                 "  properties:\n" +
                 "    a:\n" +
-                "      $ref: '#/components/schemas/TestEnum'\n" +
+                "      $ref: \"#/components/schemas/TestEnum\"\n" +
                 "    b:\n" +
-                "      $ref: '#/components/schemas/TestEnum'\n" +
+                "      $ref: \"#/components/schemas/TestEnum\"\n" +
                 "    c:\n" +
-                "      $ref: '#/components/schemas/TestSecondEnum'\n" +
+                "      $ref: \"#/components/schemas/TestSecondEnum\"\n" +
                 "    d:\n" +
                 "      type: string\n" +
                 "      enum:\n" +
@@ -133,11 +133,11 @@ public class EnumPropertyTest {
                 "  type: object\n" +
                 "  properties:\n" +
                 "    a:\n" +
-                "      $ref: '#/components/schemas/io.swagger.v3.core.oas.models.TestEnum'\n" +
+                "      $ref: \"#/components/schemas/io.swagger.v3.core.oas.models.TestEnum\"\n" +
                 "    b:\n" +
-                "      $ref: '#/components/schemas/io.swagger.v3.core.oas.models.TestEnum'\n" +
+                "      $ref: \"#/components/schemas/io.swagger.v3.core.oas.models.TestEnum\"\n" +
                 "    c:\n" +
-                "      $ref: '#/components/schemas/io.swagger.v3.core.oas.models.TestSecondEnum'\n" +
+                "      $ref: \"#/components/schemas/io.swagger.v3.core.oas.models.TestSecondEnum\"\n" +
                 "    d:\n" +
                 "      type: string\n" +
                 "      enum:\n" +
@@ -173,7 +173,7 @@ public class EnumPropertyTest {
                 "  type: object\n" +
                 "  properties:\n" +
                 "    enumValue:\n" +
-                "      $ref: '#/components/schemas/TestEnum'\n" +
+                "      $ref: \"#/components/schemas/TestEnum\"\n" +
                 "TestEnum:\n" +
                 "  type: string\n" +
                 "  enum:\n" +
@@ -219,5 +219,20 @@ public class EnumPropertyTest {
         assertTrue(thirdEnumProperty instanceof StringSchema);
         final StringSchema thirdStringProperty = (StringSchema) thirdEnumProperty;
         assertEquals(thirdStringProperty.getEnum(), Arrays.asList("2", "4", "6"));
+
+        final Schema fourthEnumProperty = (Schema) model.getProperties().get("fourthEnumValue");
+        assertTrue(fourthEnumProperty instanceof StringSchema);
+        final StringSchema fourthStringProperty = (StringSchema) fourthEnumProperty;
+        assertEquals(fourthEnumProperty.getEnum(), Arrays.asList("one", "two", "three"));
+
+        final Schema fifthEnumProperty = (Schema) model.getProperties().get("fifthEnumValue");
+        assertTrue(fifthEnumProperty instanceof StringSchema);
+        final StringSchema fifthStringProperty = (StringSchema) fifthEnumProperty;
+        assertEquals(fifthEnumProperty.getEnum(), Arrays.asList("2", "4", "6"));
+
+        final Schema sixthEnumProperty = (Schema) model.getProperties().get("sixthEnumValue");
+        assertTrue(sixthEnumProperty instanceof StringSchema);
+        final StringSchema sixthStringProperty = (StringSchema) sixthEnumProperty;
+        assertEquals(sixthEnumProperty.getEnum(), Arrays.asList("one", "two", "three"));
     }
 }

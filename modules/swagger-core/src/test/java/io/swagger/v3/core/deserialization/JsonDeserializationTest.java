@@ -8,6 +8,7 @@ import io.swagger.v3.core.util.TestUtils;
 import io.swagger.v3.core.util.Yaml;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.PathItem;
+import io.swagger.v3.oas.models.examples.Example;
 import io.swagger.v3.oas.models.headers.Header;
 import io.swagger.v3.oas.models.media.ComposedSchema;
 import io.swagger.v3.oas.models.media.Encoding;
@@ -290,10 +291,10 @@ public class JsonDeserializationTest {
                 "          description: voila!\n" +
                 "      callbacks:\n" +
                 "        testCallback1:\n" +
-                "          $ref: '#/components/callbacks/Callback'\n" +
+                "          $ref: \"#/components/callbacks/Callback\"\n" +
                 "      callbacks:\n" +
                 "        testCallback1:\n" +
-                "          $ref: '#/components/callbacks/Callback'\n" +
+                "          $ref: \"#/components/callbacks/Callback\"\n" +
                 "components:\n" +
                 "  callbacks:\n" +
                 "    Callback:\n" +
@@ -412,6 +413,120 @@ public class JsonDeserializationTest {
     }
 
     @Test
+    public void testNullExampleAndValues() throws Exception {
+        String yamlNull = "openapi: 3.0.1\n" +
+                "paths:\n" +
+                "  /:\n" +
+                "    get:\n" +
+                "      description: Operation Description\n" +
+                "      operationId: operationId\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    UserStatus:\n" +
+                "      type: object\n" +
+                "      example: null\n";
+
+        String yamlMissing = "openapi: 3.0.1\n" +
+                "paths:\n" +
+                "  /:\n" +
+                "    get:\n" +
+                "      description: Operation Description\n" +
+                "      operationId: operationId\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    UserStatus:\n" +
+                "      type: object\n";
+
+        String yamlNotNull = "openapi: 3.0.1\n" +
+                "paths:\n" +
+                "  /:\n" +
+                "    get:\n" +
+                "      description: Operation Description\n" +
+                "      operationId: operationId\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    UserStatus:\n" +
+                "      type: object\n" +
+                "      example:\n" +
+                "        value: bar\n";
+
+        String yamlValueNull = "openapi: 3.0.1\n" +
+                "paths:\n" +
+                "  /:\n" +
+                "    get:\n" +
+                "      description: Operation Description\n" +
+                "      operationId: operationId\n" +
+                "components:\n" +
+                "  examples:\n" +
+                "    UserStatus:\n" +
+                "      summary: string\n" +
+                "      value: null\n";
+
+        String yamlValueMissing = "openapi: 3.0.1\n" +
+                "paths:\n" +
+                "  /:\n" +
+                "    get:\n" +
+                "      description: Operation Description\n" +
+                "      operationId: operationId\n" +
+                "components:\n" +
+                "  examples:\n" +
+                "    UserStatus:\n" +
+                "      summary: string\n";
+
+        String yamlValueNotNull = "openapi: 3.0.1\n" +
+                "paths:\n" +
+                "  /:\n" +
+                "    get:\n" +
+                "      description: Operation Description\n" +
+                "      operationId: operationId\n" +
+                "components:\n" +
+                "  examples:\n" +
+                "    UserStatus:\n" +
+                "      summary: string\n" +
+                "      value: bar\n";
+
+        OpenAPI oas = Yaml.mapper().readValue(yamlNull, OpenAPI.class);
+        Yaml.prettyPrint(oas);
+
+        assertNull(oas.getComponents().getSchemas().get("UserStatus").getExample());
+        assertTrue(oas.getComponents().getSchemas().get("UserStatus").getExampleSetFlag());
+        assertEquals(Yaml.pretty(oas), yamlNull);
+
+        oas = Yaml.mapper().readValue(yamlMissing, OpenAPI.class);
+        Yaml.prettyPrint(oas);
+        assertNull(oas.getComponents().getSchemas().get("UserStatus").getExample());
+        assertFalse(oas.getComponents().getSchemas().get("UserStatus").getExampleSetFlag());
+        assertEquals(Yaml.pretty(oas), yamlMissing);
+
+        oas = Yaml.mapper().readValue(yamlNotNull, OpenAPI.class);
+        Yaml.prettyPrint(oas);
+        assertNotNull(oas.getComponents().getSchemas().get("UserStatus").getExample());
+        assertTrue(oas.getComponents().getSchemas().get("UserStatus").getExampleSetFlag());
+        assertEquals(Yaml.pretty(oas), yamlNotNull);
+
+        oas = Yaml.mapper().readValue(yamlValueNull, OpenAPI.class);
+        Yaml.prettyPrint(oas);
+        Example ex = oas.getComponents().getExamples().get("UserStatus");
+        assertNull(ex.getValue());
+        assertTrue(ex.getValueSetFlag());
+        assertEquals(Yaml.pretty(oas), yamlValueNull);
+
+        oas = Yaml.mapper().readValue(yamlValueMissing, OpenAPI.class);
+        Yaml.prettyPrint(oas);
+        ex = oas.getComponents().getExamples().get("UserStatus");
+        assertNull(ex.getValue());
+        assertFalse(ex.getValueSetFlag());
+        assertEquals(Yaml.pretty(oas), yamlValueMissing);
+
+        oas = Yaml.mapper().readValue(yamlValueNotNull, OpenAPI.class);
+        Yaml.prettyPrint(oas);
+        ex = oas.getComponents().getExamples().get("UserStatus");
+        assertNotNull(ex.getValue());
+        assertTrue(ex.getValueSetFlag());
+        assertEquals(Yaml.pretty(oas), yamlValueNotNull);
+    }
+
+    @Test
     public void testExampleDeserializationOnMediaType() throws Exception {
         String content = FileUtils.readFileToString(new File("src/test/resources/specFiles/media-type-null-example.yaml"), "UTF-8");
         OpenAPI openAPI = Yaml.mapper().readValue(content, OpenAPI.class);
@@ -425,6 +540,48 @@ public class JsonDeserializationTest {
         assertNotNull(openAPI.getPaths().get("/pet").getPost().getRequestBody().getContent().get("application/json").getExample());
 
         assertTrue(openAPI.getPaths().get("/pet").getPost().getRequestBody().getContent().get("application/json").getExampleSetFlag());
+    }
+
+    @Test
+    public void testDateSchemaSerialization() throws Exception {
+        String content = FileUtils.readFileToString(new File("src/test/resources/dateSchema.yaml"), "UTF-8");
+        OpenAPI openAPI = Yaml.mapper().readValue(content, OpenAPI.class);
+        Yaml.prettyPrint(openAPI);
+        SerializationMatchers.assertEqualsToYaml(openAPI, "openapi: 3.0.3\n" +
+                "info:\n" +
+                "  title: Simple Inventory API\n" +
+                "  version: 1.0.0\n" +
+                "paths:\n" +
+                "  /inventory:\n" +
+                "    get:\n" +
+                "      operationId: searchInventory\n" +
+                "      parameters:\n" +
+                "      - name: test\n" +
+                "        in: header\n" +
+                "        schema:\n" +
+                "          type: string\n" +
+                "          format: date\n" +
+                "          enum:\n" +
+                "          - 2023-12-12\n" +
+                "          default: 2023-12-12\n" +
+                "      responses:\n" +
+                "        \"200\":\n" +
+                "          description: search results matching criteria\n" +
+                "          content:\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                type: array\n" +
+                "                items:\n" +
+                "                  $ref: \"#/components/schemas/InventoryItem\"\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    InventoryItem:\n" +
+                "      type: object\n" +
+                "      properties:\n" +
+                "        releaseDate:\n" +
+                "          type: string\n" +
+                "          format: date-time\n" +
+                "          example: 2016-08-29T09:12:33.001Z");
     }
 
 }

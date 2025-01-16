@@ -11,6 +11,7 @@ import io.swagger.v3.oas.integration.OpenApiConfigurationException;
 import io.swagger.v3.oas.integration.SwaggerConfiguration;
 import io.swagger.v3.oas.integration.api.OpenApiContext;
 import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.media.Schema;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
@@ -154,8 +155,14 @@ public class SwaggerMojo extends AbstractMojo {
         if (alwaysResolveAppPath == null) {
             alwaysResolveAppPath = Boolean.FALSE;
         }
+        if (skipResolveAppPath == null) {
+            skipResolveAppPath = Boolean.FALSE;
+        }
         if (openapi31 == null) {
             openapi31 = Boolean.FALSE;
+        }
+        if (convertToOpenAPI31 == null) {
+            convertToOpenAPI31 = Boolean.FALSE;
         }
         if (config.isPrettyPrint() == null) {
             config.prettyPrint(prettyPrint);
@@ -169,9 +176,16 @@ public class SwaggerMojo extends AbstractMojo {
         if (config.isAlwaysResolveAppPath() == null) {
             config.alwaysResolveAppPath(alwaysResolveAppPath);
         }
+        if (config.isSkipResolveAppPath() == null) {
+            config.skipResolveAppPath(skipResolveAppPath);
+        }
         if (config.isOpenAPI31() == null) {
             config.setOpenAPI31(openapi31);
         }
+        if (config.isConvertToOpenAPI31() == null) {
+            config.setConvertToOpenAPI31(convertToOpenAPI31);
+        }
+
     }
 
     /**
@@ -213,7 +227,7 @@ public class SwaggerMojo extends AbstractMojo {
             List<BiFunction<String, Class<T>, T>> mappers = getSortedMappers(pathObj);
 
             T instance = null;
-            Throwable caughtEx = null;
+            List<Throwable> caughtExs = new ArrayList<>();
 
             // iterate through mappers and see if one is able to parse
             for (BiFunction<String, Class<T>, T> mapper : mappers) {
@@ -221,16 +235,27 @@ public class SwaggerMojo extends AbstractMojo {
                     instance = mapper.apply(fileContent, outputClass);
                     break;
                 } catch (Exception e) {
-                    caughtEx = e;
+                    caughtExs.add(e);
                 }
             }
 
             // if no mapper could read the content correctly, finish with error
             if (instance == null) {
-                if (caughtEx == null) {
-                    caughtEx = new IllegalStateException("undefined state");
+                if (caughtExs.isEmpty()) {
+                    caughtExs.add(new IllegalStateException("undefined state"));
                 }
-                getLog().error(format("Could not read file '%s' for config %s", pathObj.toString(), configName), caughtEx);
+
+
+                // we give more importance to the first exception, it was produced by the preferred mapper
+                Throwable caughtEx = caughtExs.get(0);
+                getLog().error(format("Could not read file '%s' for config %s", pathObj, configName), caughtEx);
+
+                if(caughtExs.size() > 1){
+                    for (Throwable ex : caughtExs.subList(1, caughtExs.size())) {
+                        getLog().warn(format("Also could not read file '%s' for config %s with alternate mapper", pathObj, configName), ex);
+                    }
+                }
+
                 throw new IllegalStateException(caughtEx.getMessage(), caughtEx);
             }
 
@@ -298,6 +323,9 @@ public class SwaggerMojo extends AbstractMojo {
         if (alwaysResolveAppPath != null) {
             config.alwaysResolveAppPath(alwaysResolveAppPath);
         }
+        if (skipResolveAppPath != null) {
+            config.skipResolveAppPath(skipResolveAppPath);
+        }
         if (readAllResources != null) {
             config.readAllResources(readAllResources);
         }
@@ -319,8 +347,22 @@ public class SwaggerMojo extends AbstractMojo {
         if (StringUtils.isNotBlank(objectMapperProcessorClass)) {
             config.objectMapperProcessorClass(objectMapperProcessorClass);
         }
+        if (StringUtils.isNotBlank(defaultResponseCode)) {
+            config.defaultResponseCode(defaultResponseCode);
+        }
         if (isCollectionNotBlank(modelConverterClasses)) {
             config.modelConverterClasses(modelConverterClasses);
+        }
+        if (openapi31 != null) {
+            config.openAPI31(openapi31);
+        }
+
+        if (StringUtils.isNotBlank(schemaResolution)) {
+            config.schemaResolution(Schema.SchemaResolution.valueOf(schemaResolution));
+        }
+
+        if (StringUtils.isNotBlank(openAPIVersion)) {
+            config.openAPIVersion(openAPIVersion);
         }
 
         return config;
@@ -356,6 +398,11 @@ public class SwaggerMojo extends AbstractMojo {
      */
     @Parameter( property = "resolve.objectMapperProcessorClass" )
     private String objectMapperProcessorClass;
+    /**
+     * @since 2.2.17
+     */
+    @Parameter( property = "resolve.defaultResponseCode" )
+    private String defaultResponseCode;
     @Parameter(property = "resolve.prettyPrint")
     private Boolean prettyPrint;
     @Parameter(property = "resolve.readAllResources")
@@ -399,11 +446,34 @@ public class SwaggerMojo extends AbstractMojo {
     private Boolean alwaysResolveAppPath;
 
     /**
+     * @since 2.1.15
+     */
+    @Parameter(property = "resolve.skipResolveAppPath")
+    private Boolean skipResolveAppPath;
+
+    /**
      * @since 2.2.0
      */
     @Parameter(property = "resolve.openapi31")
     private Boolean openapi31;
 
+    /**
+     * @since 2.2.12
+     */
+    @Parameter(property = "resolve.convertToOpenAPI31")
+    private Boolean convertToOpenAPI31;
+
+    /**
+     * @since 2.2.24
+     */
+    @Parameter(property = "resolve.schemaResolution")
+    private String schemaResolution;
+
+    /**
+     * @since 2.2.28
+     */
+    @Parameter(property = "resolve.openAPIVersion")
+    private String openAPIVersion;
 
     private String projectEncoding = "UTF-8";
     private SwaggerConfiguration config;

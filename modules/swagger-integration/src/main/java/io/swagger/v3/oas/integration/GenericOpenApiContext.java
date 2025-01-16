@@ -16,6 +16,7 @@ import io.swagger.v3.core.filter.OpenAPI31SpecFilter;
 import io.swagger.v3.core.filter.SpecFilter;
 import io.swagger.v3.core.jackson.ModelResolver;
 import io.swagger.v3.core.jackson.PathsSerializer;
+import io.swagger.v3.core.jackson.mixin.Schema31Mixin;
 import io.swagger.v3.core.util.Json;
 import io.swagger.v3.core.util.Json31;
 import io.swagger.v3.core.util.Yaml;
@@ -72,6 +73,12 @@ public class GenericOpenApiContext<T extends GenericOpenApiContext> implements O
     private long cacheTTL = -1;
 
     private Boolean openAPI31;
+
+    private Boolean convertToOpenAPI31;
+
+    private Schema.SchemaResolution schemaResolution;
+
+    private String openAPIVersion;
 
     public long getCacheTTL() {
         return cacheTTL;
@@ -302,6 +309,74 @@ public class GenericOpenApiContext<T extends GenericOpenApiContext> implements O
         return (T) this;
     }
 
+    /**
+     * @since 2.2.12
+     */
+    public Boolean isConvertToOpenAPI31() {
+        return convertToOpenAPI31;
+    }
+
+    /**
+     * @since 2.2.12
+     */
+    public void setConvertToOpenAPI31(Boolean convertToOpenAPI31) {
+        this.convertToOpenAPI31 = convertToOpenAPI31;
+        if (Boolean.TRUE.equals(convertToOpenAPI31)) {
+            this.openAPI31 = true;
+        }
+    }
+
+    /**
+     * @since 2.2.12
+     */
+    public T convertToOpenAPI31(Boolean convertToOpenAPI31) {
+        this.setConvertToOpenAPI31(convertToOpenAPI31);
+        return (T) this;
+    }
+
+    /**
+     * @since 2.2.24
+     */
+    public Schema.SchemaResolution getSchemaResolution() {
+        return schemaResolution;
+    }
+
+    /**
+     * @since 2.2.24
+     */
+    public void setSchemaResolution(Schema.SchemaResolution schemaResolution) {
+        this.schemaResolution = schemaResolution;
+    }
+
+    /**
+     * @since 2.2.24
+     */
+    public T schemaResolution(Schema.SchemaResolution schemaResolution) {
+        this.schemaResolution = schemaResolution;
+        return (T) this;
+    }
+
+    /**
+     * @since 2.2.28
+     */
+    public String getOpenAPIVersion() {
+        return openAPIVersion;
+    }
+
+    /**
+     * @since 2.2.28
+     */
+    public void setOpenAPIVersion(String openAPIVersion) {
+        this.openAPIVersion = openAPIVersion;
+    }
+
+    /**
+     * @since 2.2.28
+     */
+    public T openAPIVersion(String openAPIVersion) {
+        this.openAPIVersion = openAPIVersion;
+        return (T) this;
+    }
 
     protected void register() {
         OpenApiContextLocator.getInstance().putOpenApiContext(id, this);
@@ -439,6 +514,14 @@ public class GenericOpenApiContext<T extends GenericOpenApiContext> implements O
             openApiConfiguration = new SwaggerConfiguration().resourcePackages(resourcePackages).resourceClasses(resourceClasses);
             ((SwaggerConfiguration) openApiConfiguration).setId(id);
             ((SwaggerConfiguration) openApiConfiguration).setOpenAPI31(openAPI31);
+            ((SwaggerConfiguration) openApiConfiguration).setConvertToOpenAPI31(convertToOpenAPI31);
+            if (schemaResolution != null) {
+                ((SwaggerConfiguration) openApiConfiguration).setSchemaResolution(schemaResolution);
+            }
+            if (openAPIVersion != null && !openAPIVersion.isEmpty()) {
+                ((SwaggerConfiguration) openApiConfiguration).openAPIVersion(openAPIVersion);
+                ((SwaggerConfiguration) openApiConfiguration).setSchemaResolution(schemaResolution);
+            }
         }
 
         openApiConfiguration = mergeParentConfiguration(openApiConfiguration, parent);
@@ -497,7 +580,7 @@ public class GenericOpenApiContext<T extends GenericOpenApiContext> implements O
             if (objectMapperProcessor != null) {
                 ObjectMapper mapper = IntegrationObjectMapperFactory.createJson();
                 objectMapperProcessor.processJsonObjectMapper(mapper);
-                ModelConverters.getInstance().addConverter(new ModelResolver(mapper));
+                ModelConverters.getInstance(Boolean.TRUE.equals(openApiConfiguration.isOpenAPI31()), openApiConfiguration.getSchemaResolution()).addConverter(new ModelResolver(mapper));
 
                 objectMapperProcessor.processOutputJsonObjectMapper(outputJsonMapper);
                 objectMapperProcessor.processOutputYamlObjectMapper(outputYamlMapper);
@@ -510,7 +593,7 @@ public class GenericOpenApiContext<T extends GenericOpenApiContext> implements O
         try {
             if (modelConverters != null && !modelConverters.isEmpty()) {
                 for (ModelConverter converter: modelConverters) {
-                    ModelConverters.getInstance().addConverter(converter);
+                    ModelConverters.getInstance(Boolean.TRUE.equals(openApiConfiguration.isOpenAPI31())).addConverter(converter);
                 }
             }
         } catch (Exception e) {
@@ -526,6 +609,14 @@ public class GenericOpenApiContext<T extends GenericOpenApiContext> implements O
         // set openAPI31 if present in configuration
         if (openApiConfiguration.isOpenAPI31() != null && this.openAPI31 == null) {
             this.openAPI31 = openApiConfiguration.isOpenAPI31();
+        }
+
+        if (openApiConfiguration.isConvertToOpenAPI31() != null && this.convertToOpenAPI31 == null) {
+            this.convertToOpenAPI31 = openApiConfiguration.isConvertToOpenAPI31();
+        }
+
+        if (openApiConfiguration.getSchemaResolution() != null && this.getSchemaResolution() == null) {
+            this.schemaResolution = openApiConfiguration.getSchemaResolution();
         }
         register();
         return (T) this;
@@ -581,6 +672,9 @@ public class GenericOpenApiContext<T extends GenericOpenApiContext> implements O
         if (merged.isAlwaysResolveAppPath() == null) {
             merged.setAlwaysResolveAppPath(parentConfig.isAlwaysResolveAppPath());
         }
+        if (merged.isSkipResolveAppPath() == null) {
+            merged.setSkipResolveAppPath(parentConfig.isSkipResolveAppPath());
+        }
         if (merged.isReadAllResources() == null) {
             merged.setReadAllResources(parentConfig.isReadAllResources());
         }
@@ -593,6 +687,16 @@ public class GenericOpenApiContext<T extends GenericOpenApiContext> implements O
         if (merged.isOpenAPI31() == null) {
             merged.setOpenAPI31(parentConfig.isOpenAPI31());
         }
+        if (merged.isConvertToOpenAPI31() == null) {
+            merged.setConvertToOpenAPI31(parentConfig.isConvertToOpenAPI31());
+        }
+        if (merged.getDefaultResponseCode() == null) {
+            merged.setDefaultResponseCode(parentConfig.getDefaultResponseCode());
+        }
+
+        if (merged.getSchemaResolution() == null) {
+            merged.setSchemaResolution(parentConfig.getSchemaResolution());
+        }
 
         return merged;
     }
@@ -603,7 +707,7 @@ public class GenericOpenApiContext<T extends GenericOpenApiContext> implements O
         if (cacheTTL == 0) {
             resetReader();
             OpenAPI openAPI = getOpenApiReader().read(getOpenApiScanner().classes(), getOpenApiScanner().resources());
-            if (Boolean.TRUE.equals(openAPI31)) {
+            if (Boolean.TRUE.equals(convertToOpenAPI31)) {
                 openAPI = new SpecFilter().filter(openAPI, new OpenAPI31SpecFilter(), null, null, null);
             }
             return openAPI;
@@ -615,7 +719,7 @@ public class GenericOpenApiContext<T extends GenericOpenApiContext> implements O
             cached.createdAt = System.currentTimeMillis();
             resetReader();
             cached.openApi = getOpenApiReader().read(getOpenApiScanner().classes(), getOpenApiScanner().resources());
-            if (Boolean.TRUE.equals(openAPI31)) {
+            if (Boolean.TRUE.equals(convertToOpenAPI31)) {
                 cached.openApi = new SpecFilter().filter(cached.openApi, new OpenAPI31SpecFilter(), null, null, null);
             }
             cache.put("openapi", cached);
@@ -670,7 +774,7 @@ public class GenericOpenApiContext<T extends GenericOpenApiContext> implements O
         @JsonIgnore
         public abstract boolean getExampleSetFlag();
 
-        @JsonInclude(JsonInclude.Include.CUSTOM)
+        @JsonInclude(value = JsonInclude.Include.NON_NULL, content = JsonInclude.Include.ALWAYS)
         public abstract Object getExample();
 
         @JsonIgnore
@@ -699,7 +803,62 @@ public class GenericOpenApiContext<T extends GenericOpenApiContext> implements O
         @JsonIgnore
         public abstract Object getJsonSchemaImpl();
 
+        @JsonIgnore
+        public abstract List<Schema> getPrefixItems();
 
+        @JsonIgnore
+        public abstract String getContentEncoding();
+
+        @JsonIgnore
+        public abstract String getContentMediaType();
+
+        @JsonIgnore
+        public abstract Schema getContentSchema();
+
+        @JsonIgnore
+        public abstract Schema getPropertyNames();
+
+        @JsonIgnore
+        public abstract Object getUnevaluatedProperties();
+
+        @JsonIgnore
+        public abstract Integer getMaxContains();
+
+        @JsonIgnore
+        public abstract Integer getMinContains();
+
+        @JsonIgnore
+        public abstract Schema getAdditionalItems();
+
+        @JsonIgnore
+        public abstract Schema getUnevaluatedItems();
+
+        @JsonIgnore
+        public abstract Schema getIf();
+
+        @JsonIgnore
+        public abstract Schema getElse();
+
+        @JsonIgnore
+        public abstract Schema getThen();
+
+        @JsonIgnore
+        public abstract Map<String, Schema> getDependentSchemas();
+
+        @JsonIgnore
+        public abstract Map<String, List<String>> getDependentRequired();
+
+        @JsonIgnore
+        public abstract String get$comment();
+
+        @JsonIgnore
+        public abstract List<Object> getExamples();
+
+        @JsonIgnore
+        public abstract Object getConst();
+
+        @JsonIgnore
+        public abstract Boolean getBooleanSchemaValue();
     }
 
     @JsonPropertyOrder(value = {"openapi", "info", "externalDocs", "servers", "security", "tags", "paths", "components", "webhooks"}, alphabetic = true)
@@ -716,7 +875,7 @@ public class GenericOpenApiContext<T extends GenericOpenApiContext> implements O
         public abstract Paths getPaths();
     }
 
-    @JsonPropertyOrder(value = {"type", "format"}, alphabetic = true)
+    @JsonPropertyOrder(value = {"type", "format", "if", "then", "else"}, alphabetic = true)
     static abstract class SortedSchemaMixin31 {
 
         @JsonAnyGetter
@@ -745,6 +904,7 @@ public class GenericOpenApiContext<T extends GenericOpenApiContext> implements O
         public abstract String getType();
 
         @JsonProperty("type")
+        @JsonSerialize(using = Schema31Mixin.TypeSerializer.class)
         public abstract Set<String> getTypes();
 
         @JsonAnySetter
@@ -753,11 +913,14 @@ public class GenericOpenApiContext<T extends GenericOpenApiContext> implements O
         @JsonIgnore
         public abstract boolean getExampleSetFlag();
 
-        @JsonInclude(JsonInclude.Include.CUSTOM)
+        @JsonInclude(value = JsonInclude.Include.NON_NULL, content = JsonInclude.Include.ALWAYS)
         public abstract Object getExample();
 
         @JsonIgnore
         public abstract Object getJsonSchemaImpl();
+
+        @JsonIgnore
+        public abstract Boolean getBooleanSchemaValue();
 
     }
 
