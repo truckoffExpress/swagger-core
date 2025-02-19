@@ -1,6 +1,7 @@
 package io.swagger.v3.oas.integration.api;
 
 import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.media.Schema;
 
 import java.util.Collection;
 import java.util.Map;
@@ -50,7 +51,32 @@ public interface OpenAPIConfiguration {
     Boolean isAlwaysResolveAppPath();
 
     /**
-     * @since 3.0.0
+     * @since 2.1.15
+     */
+    Boolean isSkipResolveAppPath();
+
+    /**
+     * @since 2.2.12
      */
     Boolean isOpenAPI31();
+
+    /**
+     * @since 2.2.12
+     */
+    Boolean isConvertToOpenAPI31();
+
+    /**
+     * @since 2.2.17
+     */
+    public String getDefaultResponseCode();
+
+    /**
+     * @since 2.2.24
+     */
+    public Schema.SchemaResolution getSchemaResolution();
+
+    /**
+     * @since 2.2.28
+     */
+    public String getOpenAPIVersion();
 }

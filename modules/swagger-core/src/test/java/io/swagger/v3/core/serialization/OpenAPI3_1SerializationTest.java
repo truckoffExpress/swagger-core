@@ -1,11 +1,12 @@
 package io.swagger.v3.core.serialization;
 
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.util.DefaultIndenter;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.dataformat.yaml.JacksonYAMLParseException;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.swagger.v3.core.matchers.SerializationMatchers;
-import io.swagger.v3.core.util.Json;
-import io.swagger.v3.core.util.Json31;
-import io.swagger.v3.core.util.ResourceUtils;
-import io.swagger.v3.core.util.Yaml;
-import io.swagger.v3.core.util.Yaml31;
+import io.swagger.v3.core.util.*;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
@@ -29,9 +30,11 @@ import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.testng.annotations.Test;
+import org.yaml.snakeyaml.LoaderOptions;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 public class OpenAPI3_1SerializationTest {
 
@@ -77,13 +80,13 @@ public class OpenAPI3_1SerializationTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/Pets'\n" +
+                "                $ref: \"#/components/schemas/Pets\"\n" +
                 "        default:\n" +
                 "          description: unexpected error\n" +
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/Error'\n" +
+                "                $ref: \"#/components/schemas/Error\"\n" +
                 "    post:\n" +
                 "      tags:\n" +
                 "      - pets\n" +
@@ -97,7 +100,7 @@ public class OpenAPI3_1SerializationTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/Error'\n" +
+                "                $ref: \"#/components/schemas/Error\"\n" +
                 "  /pets/{petId}:\n" +
                 "    get:\n" +
                 "      tags:\n" +
@@ -117,13 +120,13 @@ public class OpenAPI3_1SerializationTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/Pets'\n" +
+                "                $ref: \"#/components/schemas/Pets\"\n" +
                 "        default:\n" +
                 "          description: unexpected error\n" +
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/Error'\n" +
+                "                $ref: \"#/components/schemas/Error\"\n" +
                 "components:\n" +
                 "  schemas:\n" +
                 "    Pet:\n" +
@@ -143,7 +146,7 @@ public class OpenAPI3_1SerializationTest {
                 "    Pets:\n" +
                 "      type: array\n" +
                 "      items:\n" +
-                "        $ref: '#/components/schemas/Pet'\n" +
+                "        $ref: \"#/components/schemas/Pet\"\n" +
                 "    Error:\n" +
                 "      required:\n" +
                 "      - code\n" +
@@ -162,7 +165,7 @@ public class OpenAPI3_1SerializationTest {
                 "        content:\n" +
                 "          application/json:\n" +
                 "            schema:\n" +
-                "              $ref: '#/components/schemas/Pet'\n" +
+                "              $ref: \"#/components/schemas/Pet\"\n" +
                 "      responses:\n" +
                 "        \"200\":\n" +
                 "          description: Return a 200 status to indicate that the data was received\n" +
@@ -347,6 +350,21 @@ public class OpenAPI3_1SerializationTest {
                 "  }\n" +
                 "}");
 
+    }
+
+    @Test
+    public void testJSONSerializePetstoreWithCustomFactory() throws Exception {
+
+        //given
+        final String jsonString = ResourceUtils.loadClassResource(getClass(), "specFiles/3.1.0/petstore-3.1.json");
+        JsonFactory jsonFactory = new JsonFactory();
+
+        //when
+        final OpenAPI swagger = ObjectMapperFactory.createJson31(jsonFactory).readValue(jsonString, OpenAPI.class);
+
+        // then
+        assertNotNull(swagger);
+        SerializationMatchers.assertEqualsToJson31(swagger, jsonString);
     }
 
     @Test
@@ -885,7 +903,7 @@ public class OpenAPI3_1SerializationTest {
         SerializationMatchers.assertEqualsToYaml31(openAPI, "openapi: 3.1.0\n" +
                 "paths:\n" +
                 "  /pathTest:\n" +
-                "    $ref: '#/components/pathItems/pathTest'\n" +
+                "    $ref: \"#/components/pathItems/pathTest\"\n" +
                 "    description: This is a ref path item\n" +
                 "    summary: ref path item\n" +
                 "components:\n" +
@@ -948,7 +966,7 @@ public class OpenAPI3_1SerializationTest {
                 "      responses:\n" +
                 "        \"200\":\n" +
                 "          description: point to a $ref response\n" +
-                "          $ref: '#/components/responses/okResponse'\n" +
+                "          $ref: \"#/components/responses/okResponse\"\n" +
                 "components:\n" +
                 "  responses:\n" +
                 "    okResponse:\n" +
@@ -1003,7 +1021,7 @@ public class OpenAPI3_1SerializationTest {
                 "      operationId: testPathItem\n" +
                 "      parameters:\n" +
                 "      - description: test parameter\n" +
-                "        $ref: '#/components/parameters/testParameter'\n" +
+                "        $ref: \"#/components/parameters/testParameter\"\n" +
                 "components:\n" +
                 "  parameters:\n" +
                 "    testParameter:\n" +
@@ -1054,7 +1072,7 @@ public class OpenAPI3_1SerializationTest {
                 "      example:\n" +
                 "        summary: ref summary\n" +
                 "        description: ref description\n" +
-                "        $ref: '#/components/examples/testExample'\n" +
+                "        $ref: \"#/components/examples/testExample\"\n" +
                 "  examples:\n" +
                 "    testExample:\n" +
                 "      summary: this is a summary test\n" +
@@ -1107,7 +1125,7 @@ public class OpenAPI3_1SerializationTest {
                 "      operationId: testPathItem\n" +
                 "      requestBody:\n" +
                 "        description: ref request body\n" +
-                "        $ref: '#/components/requestBodies/body'\n" +
+                "        $ref: \"#/components/requestBodies/body\"\n" +
                 "components:\n" +
                 "  requestBodies:\n" +
                 "    body:\n" +
@@ -1176,7 +1194,7 @@ public class OpenAPI3_1SerializationTest {
                 "          headers:\n" +
                 "            header:\n" +
                 "              description: ref header description\n" +
-                "              $ref: '#/components/responses/okResponse'\n" +
+                "              $ref: \"#/components/responses/okResponse\"\n" +
                 "components:\n" +
                 "  headers:\n" +
                 "    test-head:\n" +
@@ -1268,7 +1286,7 @@ public class OpenAPI3_1SerializationTest {
                 "          links:\n" +
                 "            link:\n" +
                 "              description: ref link description\n" +
-                "              $ref: '#/components/links/Link'\n" +
+                "              $ref: \"#/components/links/Link\"\n" +
                 "components:\n" +
                 "  links:\n" +
                 "    Link:\n" +
@@ -1327,7 +1345,7 @@ public class OpenAPI3_1SerializationTest {
                 "      operationId: testPathItem\n" +
                 "      callbacks:\n" +
                 "        callbackSample:\n" +
-                "          $ref: '#/components/callbacks/TestCallback'\n" +
+                "          $ref: \"#/components/callbacks/TestCallback\"\n" +
                 "components:\n" +
                 "  callbacks:\n" +
                 "    TestCallback:\n" +
@@ -1374,14 +1392,14 @@ public class OpenAPI3_1SerializationTest {
 
         System.out.println("--------- root ----------");
         Json31.prettyPrint(openAPI);
-        assertEquals(Json31.pretty(openAPI), "{\n" +
+        assertEquals(Json31.pretty(openAPI), withJacksonSystemLineSeparator("{\n" +
                 "  \"openapi\" : \"3.1.0\",\n" +
                 "  \"components\" : {\n" +
                 "    \"schemas\" : {\n" +
                 "      \"test\" : true\n" +
                 "    }\n" +
                 "  }\n" +
-                "}");
+                "}"));
         System.out.println("--------- schema ----------");
         Json31.prettyPrint(openAPI.getComponents().getSchemas().get("test"));
         assertEquals(Json31.pretty(openAPI.getComponents().getSchemas().get("test")), "true");
@@ -1396,14 +1414,14 @@ public class OpenAPI3_1SerializationTest {
         assertEquals(Yaml31.pretty(openAPI.getComponents().getSchemas().get("test")), "true\n");
         System.out.println("--------- root 3.0 ----------");
         Json.prettyPrint(openAPI);
-        assertEquals(Json.pretty(openAPI), "{\n" +
+        assertEquals(Json.pretty(openAPI), withJacksonSystemLineSeparator("{\n" +
                 "  \"openapi\" : \"3.1.0\",\n" +
                 "  \"components\" : {\n" +
                 "    \"schemas\" : {\n" +
                 "      \"test\" : { }\n" +
                 "    }\n" +
                 "  }\n" +
-                "}");
+                "}"));
         System.out.println("--------- schema 3.0 ----------");
         Json.prettyPrint(openAPI.getComponents().getSchemas().get("test"));
         assertEquals(Json.pretty(openAPI.getComponents().getSchemas().get("test")), "{ }");
@@ -1418,4 +1436,100 @@ public class OpenAPI3_1SerializationTest {
         assertEquals(Yaml.pretty(openAPI.getComponents().getSchemas().get("test")), "{}\n");
     }
 
+    @Test
+    public void testBooleanAdditionalPropertiesSerialization() throws Exception{
+        String expectedJson = "{\n" +
+                "  \"openapi\" : \"3.1.0\",\n" +
+                "  \"components\" : {\n" +
+                "    \"schemas\" : {\n" +
+                "      \"test\" : {\n" +
+                "        \"type\" : \"object\",\n" +
+                "        \"additionalProperties\" : true\n" +
+                "      }\n" +
+                "    }\n" +
+                "  }\n" +
+                "}";
+
+        String expectedYaml = "openapi: 3.1.0\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    test:\n" +
+                "      type: object\n" +
+                "      additionalProperties: true\n";
+
+        OpenAPI openAPI = Json31.mapper().readValue(expectedJson, OpenAPI.class);
+        String ser = Json31.pretty(openAPI);
+        assertEquals(ser, withJacksonSystemLineSeparator(expectedJson));
+        assertTrue(Boolean.TRUE.equals(openAPI.getComponents().getSchemas().get("test").getAdditionalProperties()));
+        openAPI = Json.mapper().readValue(expectedJson, OpenAPI.class);
+        ser = Json.pretty(openAPI);
+        assertEquals(ser, withJacksonSystemLineSeparator(expectedJson));
+        assertTrue(Boolean.TRUE.equals(openAPI.getComponents().getSchemas().get("test").getAdditionalProperties()));
+
+        openAPI = Yaml31.mapper().readValue(expectedYaml, OpenAPI.class);
+        ser = Yaml31.pretty(openAPI);
+        assertEquals(ser, expectedYaml);
+        assertTrue(Boolean.TRUE.equals(openAPI.getComponents().getSchemas().get("test").getAdditionalProperties()));
+        openAPI = Yaml.mapper().readValue(expectedYaml, OpenAPI.class);
+        ser = Yaml.pretty(openAPI);
+        assertEquals(ser, expectedYaml);
+        assertTrue(Boolean.TRUE.equals(openAPI.getComponents().getSchemas().get("test").getAdditionalProperties()));
+
+        expectedJson = "{\n" +
+                "  \"openapi\" : \"3.0.0\",\n" +
+                "  \"components\" : {\n" +
+                "    \"schemas\" : {\n" +
+                "      \"test\" : {\n" +
+                "        \"type\" : \"object\",\n" +
+                "        \"additionalProperties\" : true\n" +
+                "      }\n" +
+                "    }\n" +
+                "  }\n" +
+                "}";
+
+        expectedYaml = "openapi: 3.0.0\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    test:\n" +
+                "      type: object\n" +
+                "      additionalProperties: true\n";
+
+        openAPI = Json31.mapper().readValue(expectedJson, OpenAPI.class);
+        ser = Json31.pretty(openAPI);
+        assertEquals(ser, withJacksonSystemLineSeparator(expectedJson));
+        assertTrue(Boolean.TRUE.equals(openAPI.getComponents().getSchemas().get("test").getAdditionalProperties()));
+        openAPI = Json.mapper().readValue(expectedJson, OpenAPI.class);
+        ser = Json.pretty(openAPI);
+        assertEquals(ser, withJacksonSystemLineSeparator(expectedJson));
+        assertTrue(Boolean.TRUE.equals(openAPI.getComponents().getSchemas().get("test").getAdditionalProperties()));
+
+        openAPI = Yaml31.mapper().readValue(expectedYaml, OpenAPI.class);
+        ser = Yaml31.pretty(openAPI);
+        assertEquals(ser, expectedYaml);
+        assertTrue(Boolean.TRUE.equals(openAPI.getComponents().getSchemas().get("test").getAdditionalProperties()));
+        openAPI = Yaml.mapper().readValue(expectedYaml, OpenAPI.class);
+        ser = Yaml.pretty(openAPI);
+        assertEquals(ser, expectedYaml);
+        assertTrue(Boolean.TRUE.equals(openAPI.getComponents().getSchemas().get("test").getAdditionalProperties()));
+    }
+
+    @Test(expectedExceptions = JacksonYAMLParseException.class)
+    public void testSerializeYAML31WithCustomFactoryAndCodePointLimitReached() throws Exception {
+        // given
+        LoaderOptions loaderOptions = new LoaderOptions();
+        loaderOptions.setCodePointLimit(1);
+        YAMLFactory yamlFactory = YAMLFactory.builder()
+                .loaderOptions(loaderOptions)
+                .build();
+        final String yaml = ResourceUtils.loadClassResource(getClass(), "specFiles/petstore-3.0.yaml");
+
+        // when
+        OpenAPI deser = ObjectMapperFactory.createYaml31(yamlFactory).readValue(yaml, OpenAPI.class);
+
+        // then - Throw JacksonYAMLParseException
+    }
+
+    private static String withJacksonSystemLineSeparator(String s) {
+        return s.replace("\n", DefaultIndenter.SYS_LF);
+    }
 }

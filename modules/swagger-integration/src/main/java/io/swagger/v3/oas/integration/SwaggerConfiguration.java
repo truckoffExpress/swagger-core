@@ -2,6 +2,7 @@ package io.swagger.v3.oas.integration;
 
 import io.swagger.v3.oas.integration.api.OpenAPIConfiguration;
 import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.media.Schema;
 
 import java.util.Collection;
 import java.util.Map;
@@ -34,7 +35,31 @@ public class SwaggerConfiguration implements OpenAPIConfiguration {
 
     private Boolean alwaysResolveAppPath;
 
-    private Boolean openAPI31;
+    private Boolean skipResolveAppPath;
+
+    private Boolean openAPI31 = false;
+
+    private Boolean convertToOpenAPI31;
+
+    private Schema.SchemaResolution schemaResolution = Schema.SchemaResolution.DEFAULT;
+
+    private String openAPIVersion = "3.0.1";
+
+    @Override
+    public String getDefaultResponseCode() {
+        return defaultResponseCode;
+    }
+
+    public void setDefaultResponseCode(String defaultResponseCode) {
+        this.defaultResponseCode = defaultResponseCode;
+    }
+
+    public SwaggerConfiguration defaultResponseCode(String defaultResponseCode) {
+        this.defaultResponseCode = defaultResponseCode;
+        return this;
+    }
+
+    private String defaultResponseCode;
 
     public Long getCacheTTL() {
         return cacheTTL;
@@ -285,6 +310,29 @@ public class SwaggerConfiguration implements OpenAPIConfiguration {
     }
 
     /**
+     * @since 2.1.15
+     */
+    @Override
+    public Boolean isSkipResolveAppPath() {
+        return skipResolveAppPath;
+    }
+
+    /**
+     * @since 2.1.15
+     */
+    public void setSkipResolveAppPath(Boolean skipResolveAppPath) {
+        this.skipResolveAppPath = skipResolveAppPath;
+    }
+
+    /**
+     * @since 2.1.15
+     */
+    public SwaggerConfiguration skipResolveAppPath(Boolean skipResolveAppPath) {
+        setSkipResolveAppPath(skipResolveAppPath);
+        return this;
+    }
+
+    /**
      * @since 2.1.9
      */
     public Boolean isOpenAPI31() {
@@ -303,6 +351,68 @@ public class SwaggerConfiguration implements OpenAPIConfiguration {
      */
     public SwaggerConfiguration openAPI31(Boolean openAPI31) {
         this.openAPI31 = openAPI31;
+        return this;
+    }
+
+    /**
+     * @since 2.2.12
+     */
+    public Boolean isConvertToOpenAPI31() {
+        return convertToOpenAPI31;
+    }
+
+    /**
+     * @since 2.2.12
+     */
+    public void setConvertToOpenAPI31(Boolean convertToOpenAPI31) {
+        this.convertToOpenAPI31 = convertToOpenAPI31;
+        if (Boolean.TRUE.equals(convertToOpenAPI31)) {
+            this.openAPI31 = true;
+        }
+    }
+
+    /**
+     * @since 2.2.12
+     */
+    public SwaggerConfiguration convertToOpenAPI31(Boolean convertToOpenAPI31) {
+        this.setConvertToOpenAPI31(convertToOpenAPI31);
+        return this;
+    }
+
+    @Override
+    public Schema.SchemaResolution getSchemaResolution() {
+        return schemaResolution;
+    }
+
+    public void setSchemaResolution(Schema.SchemaResolution schemaResolution) {
+        this.schemaResolution = schemaResolution;
+    }
+
+    public SwaggerConfiguration schemaResolution(Schema.SchemaResolution schemaResolution) {
+        this.setSchemaResolution(schemaResolution);
+        return this;
+    }
+
+    /**
+     * @since 2.2.28
+     */
+    @Override
+    public String getOpenAPIVersion() {
+        return openAPIVersion;
+    }
+
+    /**
+     * @since 2.2.28
+     */
+    public void setOpenAPIVersion(String openAPIVersion) {
+        this.openAPIVersion = openAPIVersion;
+    }
+
+    /**
+     * @since 2.2.28
+     */
+    public SwaggerConfiguration openAPIVersion(String openAPIVersion) {
+        this.setOpenAPIVersion(openAPIVersion);
         return this;
     }
 }

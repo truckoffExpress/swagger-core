@@ -13,8 +13,22 @@ import io.swagger.v3.core.jackson.ModelResolver;
 import io.swagger.v3.core.model.ApiDescription;
 import io.swagger.v3.core.util.PrimitiveType;
 import io.swagger.v3.jaxrs2.matchers.SerializationMatchers;
+import io.swagger.v3.jaxrs2.petstore31.PetResource;
+import io.swagger.v3.jaxrs2.petstore31.TagResource;
+import io.swagger.v3.jaxrs2.resources.ArraySchemaImplementationResource;
+import io.swagger.v3.jaxrs2.resources.DefaultResponseResource;
+import io.swagger.v3.jaxrs2.resources.Misc31Resource;
+import io.swagger.v3.jaxrs2.resources.ParameterMaximumValueResource;
 import io.swagger.v3.jaxrs2.resources.ResponseReturnTypeResource;
+import io.swagger.v3.jaxrs2.resources.SchemaAdditionalPropertiesBooleanResource;
+import io.swagger.v3.jaxrs2.resources.SchemaAdditionalPropertiesResource;
 import io.swagger.v3.jaxrs2.resources.SchemaPropertiesResource;
+import io.swagger.v3.jaxrs2.resources.SiblingPropResource;
+import io.swagger.v3.jaxrs2.resources.SiblingsResource;
+import io.swagger.v3.jaxrs2.resources.SiblingsResourceRequestBody;
+import io.swagger.v3.jaxrs2.resources.SiblingsResourceRequestBodyMultiple;
+import io.swagger.v3.jaxrs2.resources.SiblingsResourceResponse;
+import io.swagger.v3.jaxrs2.resources.SiblingsResourceSimple;
 import io.swagger.v3.jaxrs2.resources.SingleExampleResource;
 import io.swagger.v3.jaxrs2.resources.BasicFieldsResource;
 import io.swagger.v3.jaxrs2.resources.BookStoreTicket2646;
@@ -66,9 +80,13 @@ import io.swagger.v3.jaxrs2.resources.Ticket3015Resource;
 import io.swagger.v3.jaxrs2.resources.Ticket3587Resource;
 import io.swagger.v3.jaxrs2.resources.Ticket3731BisResource;
 import io.swagger.v3.jaxrs2.resources.Ticket3731Resource;
+import io.swagger.v3.jaxrs2.resources.Ticket4412Resource;
+import io.swagger.v3.jaxrs2.resources.Ticket4446Resource;
+import io.swagger.v3.jaxrs2.resources.Ticket4483Resource;
 import io.swagger.v3.jaxrs2.resources.UploadResource;
 import io.swagger.v3.jaxrs2.resources.UrlEncodedResourceWithEncodings;
 import io.swagger.v3.jaxrs2.resources.UserAnnotationResource;
+import io.swagger.v3.jaxrs2.resources.WebHookResource;
 import io.swagger.v3.jaxrs2.resources.extensions.ExtensionsResource;
 import io.swagger.v3.jaxrs2.resources.extensions.OperationExtensionsResource;
 import io.swagger.v3.jaxrs2.resources.extensions.ParameterExtensionsResource;
@@ -83,6 +101,7 @@ import io.swagger.v3.jaxrs2.resources.generics.ticket3694.Ticket3694ResourceSimp
 import io.swagger.v3.jaxrs2.resources.rs.ProcessTokenRestService;
 import io.swagger.v3.jaxrs2.resources.ticket3624.Service;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.integration.SwaggerConfiguration;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.ExternalDocumentation;
 import io.swagger.v3.oas.models.OpenAPI;
@@ -125,6 +144,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.testng.Assert.assertEquals;
@@ -371,7 +391,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/SampleResponseSchema'\n" +
+                "                $ref: \"#/components/schemas/SampleResponseSchema\"\n" +
                 "        \"404\":\n" +
                 "          description: not found!\n" +
                 "        \"400\":\n" +
@@ -379,7 +399,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            '*/*':\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/GenericError'\n" +
+                "                $ref: \"#/components/schemas/GenericError\"\n" +
                 "      deprecated: true\n" +
                 "components:\n" +
                 "  schemas:\n" +
@@ -410,13 +430,13 @@ public class ReaderTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/SampleResponseSchema'\n" +
+                "                $ref: \"#/components/schemas/SampleResponseSchema\"\n" +
                 "        default:\n" +
                 "          description: boo\n" +
                 "          content:\n" +
                 "            '*/*':\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/GenericError'\n" +
+                "                $ref: \"#/components/schemas/GenericError\"\n" +
                 "      deprecated: true\n" +
                 "  /allOf:\n" +
                 "    get:\n" +
@@ -438,8 +458,8 @@ public class ReaderTest {
                 "            application/json:\n" +
                 "              schema:\n" +
                 "                allOf:\n" +
-                "                - $ref: '#/components/schemas/MultipleSub1Bean'\n" +
-                "                - $ref: '#/components/schemas/MultipleSub2Bean'\n" +
+                "                - $ref: \"#/components/schemas/MultipleSub1Bean\"\n" +
+                "                - $ref: \"#/components/schemas/MultipleSub2Bean\"\n" +
                 "  /anyOf:\n" +
                 "    get:\n" +
                 "      summary: Test inheritance / polymorphism\n" +
@@ -460,8 +480,8 @@ public class ReaderTest {
                 "            application/json:\n" +
                 "              schema:\n" +
                 "                anyOf:\n" +
-                "                - $ref: '#/components/schemas/MultipleSub1Bean'\n" +
-                "                - $ref: '#/components/schemas/MultipleSub2Bean'\n" +
+                "                - $ref: \"#/components/schemas/MultipleSub1Bean\"\n" +
+                "                - $ref: \"#/components/schemas/MultipleSub2Bean\"\n" +
                 "  /oneOf:\n" +
                 "    get:\n" +
                 "      summary: Test inheritance / polymorphism\n" +
@@ -482,8 +502,8 @@ public class ReaderTest {
                 "            application/json:\n" +
                 "              schema:\n" +
                 "                oneOf:\n" +
-                "                - $ref: '#/components/schemas/MultipleSub1Bean'\n" +
-                "                - $ref: '#/components/schemas/MultipleSub2Bean'\n" +
+                "                - $ref: \"#/components/schemas/MultipleSub1Bean\"\n" +
+                "                - $ref: \"#/components/schemas/MultipleSub2Bean\"\n" +
                 "components:\n" +
                 "  schemas:\n" +
                 "    SampleResponseSchema:\n" +
@@ -494,7 +514,7 @@ public class ReaderTest {
                 "      type: object\n" +
                 "      description: MultipleSub1Bean\n" +
                 "      allOf:\n" +
-                "      - $ref: '#/components/schemas/MultipleBaseBean'\n" +
+                "      - $ref: \"#/components/schemas/MultipleBaseBean\"\n" +
                 "      - type: object\n" +
                 "        properties:\n" +
                 "          c:\n" +
@@ -504,7 +524,7 @@ public class ReaderTest {
                 "      type: object\n" +
                 "      description: MultipleSub2Bean\n" +
                 "      allOf:\n" +
-                "      - $ref: '#/components/schemas/MultipleBaseBean'\n" +
+                "      - $ref: \"#/components/schemas/MultipleBaseBean\"\n" +
                 "      - type: object\n" +
                 "        properties:\n" +
                 "          d:\n" +
@@ -714,6 +734,36 @@ public class ReaderTest {
         @io.swagger.v3.oas.annotations.Operation(tags = "/receiver/rest")
         //public void test1(@QueryParam("aa") String a) {
         public void test1(A a) {
+        }
+    }
+
+    @Test
+    public void testClassWithCompletableFuture() {
+        Reader reader = new Reader(new OpenAPI());
+        OpenAPI openAPI = reader.read(ClassWithCompletableFuture.class);
+        assertNotNull(openAPI);
+
+        assertEquals(
+            openAPI.getPaths()
+                    .get("/myApi")
+                    .getGet()
+                    .getResponses()
+                    .get("default")
+                    .getContent()
+                    .get("application/json")
+                    .getSchema()
+                    .get$ref(),
+                "#/components/schemas/Ret"
+        );
+    }
+
+    static class ClassWithCompletableFuture {
+        @Path("/myApi")
+        @Produces("application/json")
+        @Consumes("application/json")
+        @GET
+        public CompletableFuture<Ret> myApi(A a) {
+            return CompletableFuture.completedFuture(new Ret());
         }
     }
 
@@ -1025,7 +1075,7 @@ public class ReaderTest {
                 "        content:\n" +
                 "          application/json:\n" +
                 "            schema:\n" +
-                "              $ref: '#/components/schemas/Animal'\n" +
+                "              $ref: \"#/components/schemas/Animal\"\n" +
                 "      responses:\n" +
                 "        default:\n" +
                 "          description: default response\n" +
@@ -1047,7 +1097,7 @@ public class ReaderTest {
                 "    Cat:\n" +
                 "      type: object\n" +
                 "      allOf:\n" +
-                "      - $ref: '#/components/schemas/Animal'\n" +
+                "      - $ref: \"#/components/schemas/Animal\"\n" +
                 "      - type: object\n" +
                 "        properties:\n" +
                 "          lives:\n" +
@@ -1056,7 +1106,7 @@ public class ReaderTest {
                 "    Dog:\n" +
                 "      type: object\n" +
                 "      allOf:\n" +
-                "      - $ref: '#/components/schemas/Animal'\n" +
+                "      - $ref: \"#/components/schemas/Animal\"\n" +
                 "      - type: object\n" +
                 "        properties:\n" +
                 "          barkVolume:\n" +
@@ -1081,7 +1131,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            '*/*':\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/Test'\n" +
+                "                $ref: \"#/components/schemas/Test\"\n" +
                 "components:\n" +
                 "  schemas:\n" +
                 "    Test:\n" +
@@ -1132,7 +1182,7 @@ public class ReaderTest {
                 "        content:\n" +
                 "          '*/*':\n" +
                 "            schema:\n" +
-                "              $ref: '#/components/schemas/Book'\n" +
+                "              $ref: \"#/components/schemas/Book\"\n" +
                 "        required: true\n" +
                 "      responses:\n" +
                 "        default:\n" +
@@ -1146,7 +1196,7 @@ public class ReaderTest {
                 "        content:\n" +
                 "          '*/*':\n" +
                 "            schema:\n" +
-                "              $ref: '#/components/schemas/Book'\n" +
+                "              $ref: \"#/components/schemas/Book\"\n" +
                 "        required: true\n" +
                 "      responses:\n" +
                 "        default:\n" +
@@ -1182,7 +1232,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/DistancesResponse'\n" +
+                "                $ref: \"#/components/schemas/DistancesResponse\"\n" +
                 "components:\n" +
                 "  schemas:\n" +
                 "    DistancesResponse:\n" +
@@ -1236,15 +1286,15 @@ public class ReaderTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/SampleResponseSchema'\n" +
+                "                $ref: \"#/components/schemas/SampleResponseSchema\"\n" +
                 "        default:\n" +
                 "          description: boo\n" +
                 "          content:\n" +
                 "            '*/*':\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/GenericError'\n" +
+                "                $ref: \"#/components/schemas/GenericError\"\n" +
                 "        \"401\":\n" +
-                "          $ref: '#/components/responses/invalidJWT'\n" +
+                "          $ref: \"#/components/responses/invalidJWT\"\n" +
                 "      deprecated: true\n" +
                 "components:\n" +
                 "  schemas:\n" +
@@ -1290,15 +1340,15 @@ public class ReaderTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/SampleResponseSchema'\n" +
+                "                $ref: \"#/components/schemas/SampleResponseSchema\"\n" +
                 "        default:\n" +
                 "          description: boo\n" +
                 "          content:\n" +
                 "            '*/*':\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/GenericError'\n" +
+                "                $ref: \"#/components/schemas/GenericError\"\n" +
                 "        \"401\":\n" +
-                "          $ref: '#/components/responses/invalidJWT'\n" +
+                "          $ref: \"#/components/responses/invalidJWT\"\n" +
                 "      deprecated: true\n" +
                 "components:\n" +
                 "  schemas:\n" +
@@ -1342,7 +1392,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            '*/*':\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/Town'\n" +
+                "                $ref: \"#/components/schemas/Town\"\n" +
                 "components:\n" +
                 "  schemas:\n" +
                 "    Town:\n" +
@@ -1380,7 +1430,7 @@ public class ReaderTest {
                 "      description: Defines a simple get operation with a payload complex input object\n" +
                 "      operationId: sendPayload\n" +
                 "      requestBody:\n" +
-                "        $ref: '#/components/requestBodies/User'\n" +
+                "        $ref: \"#/components/requestBodies/User\"\n" +
                 "      responses:\n" +
                 "        default:\n" +
                 "          description: default response\n" +
@@ -1444,7 +1494,7 @@ public class ReaderTest {
                 "      description: Defines a simple get operation with a payload complex input object\n" +
                 "      operationId: sendPayload\n" +
                 "      requestBody:\n" +
-                "        $ref: '#/components/requestBodies/User'\n" +
+                "        $ref: \"#/components/requestBodies/User\"\n" +
                 "      responses:\n" +
                 "        default:\n" +
                 "          description: default response\n" +
@@ -1522,7 +1572,7 @@ public class ReaderTest {
                 "      description: Defines a simple get operation with a payload complex input object\n" +
                 "      operationId: sendPayload\n" +
                 "      parameters:\n" +
-                "      - $ref: '#/components/parameters/id'\n" +
+                "      - $ref: \"#/components/parameters/id\"\n" +
                 "      responses:\n" +
                 "        default:\n" +
                 "          description: default response\n" +
@@ -1573,7 +1623,7 @@ public class ReaderTest {
                 "      description: Defines a simple get operation with a payload complex input object\n" +
                 "      operationId: sendPayload\n" +
                 "      parameters:\n" +
-                "      - $ref: '#/components/parameters/id'\n" +
+                "      - $ref: \"#/components/parameters/id\"\n" +
                 "      responses:\n" +
                 "        default:\n" +
                 "          description: default response\n" +
@@ -1643,7 +1693,7 @@ public class ReaderTest {
                 "            description: subscriptionId_1\n" +
                 "            value: 12345\n" +
                 "            externalValue: Subscription external value 1\n" +
-                "            $ref: '#/components/examples/Id'\n" +
+                "            $ref: \"#/components/examples/Id\"\n" +
                 "        example: example\n" +
                 "      requestBody:\n" +
                 "        content:\n" +
@@ -1657,7 +1707,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            '*/*':\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/SubscriptionResponse'\n" +
+                "                $ref: \"#/components/schemas/SubscriptionResponse\"\n" +
                 "components:\n" +
                 "  schemas:\n" +
                 "    SubscriptionResponse:\n" +
@@ -1699,7 +1749,7 @@ public class ReaderTest {
                 "      operationId: subscribe\n" +
                 "      parameters:\n" +
                 "      - example:\n" +
-                "          $ref: '#/components/examples/Id'\n" +
+                "          $ref: \"#/components/examples/Id\"\n" +
                 "      requestBody:\n" +
                 "        content:\n" +
                 "          '*/*':\n" +
@@ -1712,7 +1762,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            '*/*':\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/SubscriptionResponse'\n" +
+                "                $ref: \"#/components/schemas/SubscriptionResponse\"\n" +
                 "components:\n" +
                 "  schemas:\n" +
                 "    SubscriptionResponse:\n" +
@@ -1770,7 +1820,7 @@ public class ReaderTest {
                 "          headers:\n" +
                 "            Rate-Limit-Limit:\n" +
                 "              description: The number of allowed requests in the current period\n" +
-                "              $ref: '#/components/headers/Header'\n" +
+                "              $ref: \"#/components/headers/Header\"\n" +
                 "              style: simple\n" +
                 "              schema:\n" +
                 "                type: integer\n" +
@@ -1820,7 +1870,7 @@ public class ReaderTest {
                 "    myOauth2Security:\n" +
                 "      type: oauth2\n" +
                 "      description: myOauthSecurity Description\n" +
-                "      $ref: '#/components/securitySchemes/Security'\n" +
+                "      $ref: \"#/components/securitySchemes/Security\"\n" +
                 "      in: header\n" +
                 "      flows:\n" +
                 "        implicit:\n" +
@@ -1859,13 +1909,13 @@ public class ReaderTest {
                 "          content:\n" +
                 "            '*/*':\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/User'\n" +
+                "                $ref: \"#/components/schemas/User\"\n" +
                 "          links:\n" +
                 "            address:\n" +
                 "              operationId: getAddress\n" +
                 "              parameters:\n" +
                 "                userId: $request.query.userId\n" +
-                "              $ref: '#/components/links/Link'\n" +
+                "              $ref: \"#/components/links/Link\"\n" +
                 "components:\n" +
                 "  links:\n" +
                 "    Link:\n" +
@@ -1898,7 +1948,7 @@ public class ReaderTest {
                 "          description: voila!\n" +
                 "      callbacks:\n" +
                 "        testCallback1:\n" +
-                "          $ref: '#/components/callbacks/Callback'\n" +
+                "          $ref: \"#/components/callbacks/Callback\"\n" +
                 "components:\n" +
                 "  callbacks:\n" +
                 "    Callback:\n" +
@@ -2014,7 +2064,7 @@ public class ReaderTest {
                 "      summary: Simple get operation\n" +
                 "      operationId: sendPayload2\n" +
                 "      parameters:\n" +
-                "      - $ref: '#/components/parameters/id'\n" +
+                "      - $ref: \"#/components/parameters/id\"\n" +
                 "      responses:\n" +
                 "        default:\n" +
                 "          description: default response\n" +
@@ -2025,7 +2075,7 @@ public class ReaderTest {
                 "      summary: Simple get operation\n" +
                 "      operationId: sendPayload1\n" +
                 "      parameters:\n" +
-                "      - $ref: '#/components/parameters/id'\n" +
+                "      - $ref: \"#/components/parameters/id\"\n" +
                 "      responses:\n" +
                 "        default:\n" +
                 "          description: default response\n" +
@@ -2058,14 +2108,14 @@ public class ReaderTest {
                 "        content:\n" +
                 "          application/json:\n" +
                 "            schema:\n" +
-                "              $ref: '#/components/schemas/ProcessTokenDTO'\n" +
+                "              $ref: \"#/components/schemas/ProcessTokenDTO\"\n" +
                 "      responses:\n" +
                 "        default:\n" +
                 "          description: default response\n" +
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/ProcessTokenDTO'\n" +
+                "                $ref: \"#/components/schemas/ProcessTokenDTO\"\n" +
                 "components:\n" +
                 "  schemas:\n" +
                 "    ProcessTokenDTO:\n" +
@@ -2104,7 +2154,7 @@ public class ReaderTest {
                 "        content:\n" +
                 "          application/json:\n" +
                 "            schema:\n" +
-                "              $ref: '#/components/schemas/User'\n" +
+                "              $ref: \"#/components/schemas/User\"\n" +
                 "            example:\n" +
                 "              foo: foo\n" +
                 "              bar: bar\n" +
@@ -2120,7 +2170,7 @@ public class ReaderTest {
                 "        content:\n" +
                 "          application/json:\n" +
                 "            schema:\n" +
-                "              $ref: '#/components/schemas/User'\n" +
+                "              $ref: \"#/components/schemas/User\"\n" +
                 "            example:\n" +
                 "              foo: foo\n" +
                 "              bar: bar\n" +
@@ -2177,7 +2227,7 @@ public class ReaderTest {
                 "                name:\n" +
                 "                  type: string\n" +
                 "                picture:\n" +
-                "                  $ref: '#/components/schemas/picture'\n" +
+                "                  $ref: \"#/components/schemas/picture\"\n" +
                 "      responses:\n" +
                 "        default:\n" +
                 "          description: default response\n" +
@@ -2190,7 +2240,7 @@ public class ReaderTest {
                 "        content:\n" +
                 "          multipart/form-data:\n" +
                 "            schema:\n" +
-                "              $ref: '#/components/schemas/UploadRequest'\n" +
+                "              $ref: \"#/components/schemas/UploadRequest\"\n" +
                 "      responses:\n" +
                 "        default:\n" +
                 "          description: default response\n" +
@@ -2271,7 +2321,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/Response'\n" +
+                "                $ref: \"#/components/schemas/Response\"\n" +
                 "  /example/model/by/ids:\n" +
                 "    get:\n" +
                 "      tags:\n" +
@@ -2284,7 +2334,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/ByIdResponse'\n" +
+                "                $ref: \"#/components/schemas/ByIdResponse\"\n" +
                 "  /example/containerized/model:\n" +
                 "    get:\n" +
                 "      tags:\n" +
@@ -2297,7 +2347,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/ContainerizedResponse'\n" +
+                "                $ref: \"#/components/schemas/ContainerizedResponse\"\n" +
                 "components:\n" +
                 "  schemas:\n" +
                 "    Model:\n" +
@@ -2310,11 +2360,11 @@ public class ReaderTest {
                 "        active:\n" +
                 "          type: boolean\n" +
                 "        schemaParent:\n" +
-                "          $ref: '#/components/schemas/Model'\n" +
+                "          $ref: \"#/components/schemas/Model\"\n" +
                 "        optionalString:\n" +
                 "          type: string\n" +
                 "        parent:\n" +
-                "          $ref: '#/components/schemas/Model'\n" +
+                "          $ref: \"#/components/schemas/Model\"\n" +
                 "        id:\n" +
                 "          type: integer\n" +
                 "          format: int32\n" +
@@ -2327,14 +2377,14 @@ public class ReaderTest {
                 "        models:\n" +
                 "          type: array\n" +
                 "          items:\n" +
-                "            $ref: '#/components/schemas/Model'\n" +
+                "            $ref: \"#/components/schemas/Model\"\n" +
                 "    ByIdResponse:\n" +
                 "      type: object\n" +
                 "      properties:\n" +
                 "        modelsById:\n" +
                 "          type: object\n" +
                 "          additionalProperties:\n" +
-                "            $ref: '#/components/schemas/Model'\n" +
+                "            $ref: \"#/components/schemas/Model\"\n" +
                 "    ContainerizedResponse:\n" +
                 "      type: object\n" +
                 "      properties:\n" +
@@ -2344,14 +2394,14 @@ public class ReaderTest {
                 "        containerizedModels:\n" +
                 "          type: array\n" +
                 "          items:\n" +
-                "            $ref: '#/components/schemas/ModelContainer'\n" +
+                "            $ref: \"#/components/schemas/ModelContainer\"\n" +
                 "    ModelContainer:\n" +
                 "      type: object\n" +
                 "      properties:\n" +
                 "        text:\n" +
                 "          type: string\n" +
                 "        model:\n" +
-                "          $ref: '#/components/schemas/Model'\n" +
+                "          $ref: \"#/components/schemas/Model\"\n" +
                 "        id:\n" +
                 "          type: integer\n" +
                 "          format: int32";
@@ -2606,7 +2656,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            '*/*':\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/ItemWithChildren'\n" +
+                "                $ref: \"#/components/schemas/ItemWithChildren\"\n" +
                 "  /item/nogeneric/{id}:\n" +
                 "    get:\n" +
                 "      operationId: getByIdNoGeneric\n" +
@@ -2622,7 +2672,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            '*/*':\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/ItemWithChildren'\n" +
+                "                $ref: \"#/components/schemas/ItemWithChildren\"\n" +
                 "  /item/nogenericsamereturn/{id}:\n" +
                 "    get:\n" +
                 "      operationId: getByIdNoGenericSameReturn\n" +
@@ -2638,7 +2688,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            '*/*':\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/BaseDTO'\n" +
+                "                $ref: \"#/components/schemas/BaseDTO\"\n" +
                 "  /item/genericparam:\n" +
                 "    post:\n" +
                 "      operationId: genericParam\n" +
@@ -2646,14 +2696,14 @@ public class ReaderTest {
                 "        content:\n" +
                 "          '*/*':\n" +
                 "            schema:\n" +
-                "              $ref: '#/components/schemas/ItemWithChildren'\n" +
+                "              $ref: \"#/components/schemas/ItemWithChildren\"\n" +
                 "      responses:\n" +
                 "        default:\n" +
                 "          description: default response\n" +
                 "          content:\n" +
                 "            '*/*':\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/BaseDTO'\n" +
+                "                $ref: \"#/components/schemas/BaseDTO\"\n" +
                 "components:\n" +
                 "  schemas:\n" +
                 "    ItemWithChildren:\n" +
@@ -2687,7 +2737,7 @@ public class ReaderTest {
                 "        content:\n" +
                 "          '*/*':\n" +
                 "            schema:\n" +
-                "              $ref: '#/components/schemas/SampleDTO'\n" +
+                "              $ref: \"#/components/schemas/SampleDTO\"\n" +
                 "      responses:\n" +
                 "        \"201\":\n" +
                 "          description: Created\n" +
@@ -2706,7 +2756,7 @@ public class ReaderTest {
                 "        content:\n" +
                 "          '*/*':\n" +
                 "            schema:\n" +
-                "              $ref: '#/components/schemas/SampleOtherDTO'\n" +
+                "              $ref: \"#/components/schemas/SampleOtherDTO\"\n" +
                 "      responses:\n" +
                 "        \"200\":\n" +
                 "          description: OK\n" +
@@ -2725,7 +2775,7 @@ public class ReaderTest {
                 "        content:\n" +
                 "          '*/*':\n" +
                 "            schema:\n" +
-                "              $ref: '#/components/schemas/SampleOtherDTO'\n" +
+                "              $ref: \"#/components/schemas/SampleOtherDTO\"\n" +
                 "      responses:\n" +
                 "        \"200\":\n" +
                 "          description: OK\n" +
@@ -2885,7 +2935,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/MultipleBaseBean'\n" +
+                "                $ref: \"#/components/schemas/MultipleBaseBean\"\n" +
                 "  /two:\n" +
                 "    get:\n" +
                 "      operationId: requestBodySchemaPropertySchema\n" +
@@ -2905,7 +2955,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/MultipleBaseBean'\n" +
+                "                $ref: \"#/components/schemas/MultipleBaseBean\"\n" +
                 "  /three:\n" +
                 "    get:\n" +
                 "      operationId: requestBodySchemaPropertySchemaArray\n" +
@@ -2927,7 +2977,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/MultipleBaseBean'\n" +
+                "                $ref: \"#/components/schemas/MultipleBaseBean\"\n" +
                 "components:\n" +
                 "  schemas:\n" +
                 "    MultipleBaseBean:\n" +
@@ -2945,7 +2995,7 @@ public class ReaderTest {
                 "      type: object\n" +
                 "      description: MultipleSub1Bean\n" +
                 "      allOf:\n" +
-                "      - $ref: '#/components/schemas/MultipleBaseBean'\n" +
+                "      - $ref: \"#/components/schemas/MultipleBaseBean\"\n" +
                 "      - type: object\n" +
                 "        properties:\n" +
                 "          c:\n" +
@@ -2955,13 +3005,157 @@ public class ReaderTest {
                 "      type: object\n" +
                 "      description: MultipleSub2Bean\n" +
                 "      allOf:\n" +
-                "      - $ref: '#/components/schemas/MultipleBaseBean'\n" +
+                "      - $ref: \"#/components/schemas/MultipleBaseBean\"\n" +
                 "      - type: object\n" +
                 "        properties:\n" +
                 "          d:\n" +
                 "            type: integer\n" +
                 "            format: int32\n";
         SerializationMatchers.assertEqualsToYaml(openAPI, yaml);
+    }
+
+    @Test(description = "Test Schema AdditionalProperties annotations")
+    public void testSchemaAdditionalProperties() {
+        Reader reader = new Reader(new OpenAPI());
+
+        OpenAPI openAPI = reader.read(SchemaAdditionalPropertiesResource.class);
+        String yaml = "openapi: 3.0.1\n" +
+                "paths:\n" +
+                "  /arraySchemaImpl:\n" +
+                "    get:\n" +
+                "      operationId: arraySchemaImpl\n" +
+                "      responses:\n" +
+                "        \"200\":\n" +
+                "          description: voila!\n" +
+                "          content:\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                type: object\n" +
+                "                additionalProperties:\n" +
+                "                  type: array\n" +
+                "                  items:\n" +
+                "                    $ref: \"#/components/schemas/Pet\"\n" +
+                "  /fromtResponseType:\n" +
+                "    get:\n" +
+                "      operationId: fromtResponseType\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            '*/*':\n" +
+                "              schema:\n" +
+                "                type: object\n" +
+                "                additionalProperties:\n" +
+                "                  type: array\n" +
+                "                  items:\n" +
+                "                    $ref: \"#/components/schemas/Pet\"\n" +
+                "  /schemaImpl:\n" +
+                "    get:\n" +
+                "      operationId: schemaImpl\n" +
+                "      responses:\n" +
+                "        \"200\":\n" +
+                "          description: voila!\n" +
+                "          content:\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                type: object\n" +
+                "                additionalProperties:\n" +
+                "                  $ref: \"#/components/schemas/Pet\"\n" +
+                "  /schemaNotImpl:\n" +
+                "    get:\n" +
+                "      operationId: schemaNotImpl\n" +
+                "      responses:\n" +
+                "        \"200\":\n" +
+                "          description: voila!\n" +
+                "          content:\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                type: object\n" +
+                "                additionalProperties:\n" +
+                "                  $ref: \"#/components/schemas/Pet\"\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    Pet:\n" +
+                "      type: object\n" +
+                "      properties:\n" +
+                "        foo:\n" +
+                "          type: string\n";
+        SerializationMatchers.assertEqualsToYaml(openAPI, yaml);
+    }
+
+    @Test(description = "Test Schema AdditionalProperties annotations")
+    public void testSchemaAdditionalPropertiesBoolean() {
+        ModelConverters.reset();
+        SwaggerConfiguration config = new SwaggerConfiguration().openAPI(new OpenAPI()).schemaResolution(Schema.SchemaResolution.ALL_OF);
+        Reader reader = new Reader(config);
+
+        OpenAPI openAPI = reader.read(SchemaAdditionalPropertiesBooleanResource.class);
+        String yaml = "openapi: 3.0.1\n" +
+                "paths:\n" +
+                "  /test:\n" +
+                "    get:\n" +
+                "      operationId: test\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            '*/*':\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/Pet\"\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    Bar:\n" +
+                "      type: object\n" +
+                "      properties:\n" +
+                "        foo:\n" +
+                "          type: string\n" +
+                "    Pet:\n" +
+                "      type: object\n" +
+                "      properties:\n" +
+                "        bar:\n" +
+                "          allOf:\n" +
+                "          - additionalProperties:\n" +
+                "              $ref: \"#/components/schemas/Bar\"\n" +
+                "          - $ref: \"#/components/schemas/Bar\"\n" +
+                "        vbar:\n" +
+                "          allOf:\n" +
+                "          - additionalProperties: false\n" +
+                "          - $ref: \"#/components/schemas/Bar\"\n" +
+                "      additionalProperties: false\n";
+        SerializationMatchers.assertEqualsToYaml(openAPI, yaml);
+        ModelConverters.reset();
+    }
+
+    @Test(description = "Test ArraySchema implementation annotations")
+    public void testArraySchemaImplementation() {
+        SwaggerConfiguration config = new SwaggerConfiguration().openAPI31(true).openAPI(new OpenAPI());
+        Reader reader = new Reader(config);
+
+        OpenAPI openAPI = reader.read(ArraySchemaImplementationResource.class);
+        String yaml = "openapi: 3.1.0\n" +
+                "paths:\n" +
+                "  /test:\n" +
+                "    get:\n" +
+                "      operationId: test\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            '*/*':\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/Pet\"\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    Pet:\n" +
+                "      type: object\n" +
+                "      properties:\n" +
+                "        cars:\n" +
+                "          type: array\n" +
+                "          items:\n" +
+                "            type: integer\n" +
+                "            format: int32\n" +
+                "            description: A house in a street\n";
+        SerializationMatchers.assertEqualsToYaml31(openAPI, yaml);
     }
 
     @Test(description = "Responses schema resolved from return type")
@@ -2990,13 +3184,13 @@ public class ReaderTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/TestDTO'\n" +
+                "                $ref: \"#/components/schemas/TestDTO\"\n" +
                 "        \"201\":\n" +
                 "          description: \"201\"\n" +
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/TestDTO'\n" +
+                "                $ref: \"#/components/schemas/TestDTO\"\n" +
                 "        \"204\":\n" +
                 "          description: No Content\n" +
                 "          content:\n" +
@@ -3020,7 +3214,7 @@ public class ReaderTest {
                 "          content:\n" +
                 "            application/json:\n" +
                 "              schema:\n" +
-                "                $ref: '#/components/schemas/TestDTO'\n" +
+                "                $ref: \"#/components/schemas/TestDTO\"\n" +
                 "components:\n" +
                 "  schemas:\n" +
                 "    TestDTO:\n" +
@@ -3028,6 +3222,1045 @@ public class ReaderTest {
                 "      properties:\n" +
                 "        foo:\n" +
                 "          type: string";
+        SerializationMatchers.assertEqualsToYaml(openAPI, yaml);
+    }
+
+    @Test(description = "Responses Default Status")
+    public void testResponseDefaultStatus() {
+        SwaggerConfiguration config = new SwaggerConfiguration().defaultResponseCode("200");
+        Reader reader = new Reader(config);
+
+        OpenAPI openAPI = reader.read(DefaultResponseResource.class);
+        String yaml = "openapi: 3.0.1\n" +
+                "paths:\n" +
+                "  /:\n" +
+                "    get:\n" +
+                "      operationId: test\n" +
+                "      responses:\n" +
+                "        \"200\":\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            '*/*':\n" +
+                "              schema:\n" +
+                "                type: string\n";
+        SerializationMatchers.assertEqualsToYaml(openAPI, yaml);
+    }
+
+    @Test
+    public void test4412PathWildcards() {
+        Reader reader = new Reader(new OpenAPI());
+
+        OpenAPI openAPI = reader.read(Ticket4412Resource.class);
+        String yaml = "openapi: 3.0.1\n" +
+                "paths:\n" +
+                "  /test/sws/{var}:\n" +
+                "    get:\n" +
+                "      operationId: getCart\n" +
+                "      parameters:\n" +
+                "      - name: var\n" +
+                "        in: path\n" +
+                "        required: true\n" +
+                "        schema:\n" +
+                "          pattern: .*\n" +
+                "          type: string\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            text/xml:\n" +
+                "              schema:\n" +
+                "                type: array\n" +
+                "                items:\n" +
+                "                  type: string";
+        SerializationMatchers.assertEqualsToYaml(openAPI, yaml);
+    }
+
+    @Test
+    public void testOas31Petstore() {
+        SwaggerConfiguration config = new SwaggerConfiguration().openAPI31(true).openAPI(new OpenAPI());
+        Reader reader = new Reader(config);
+
+        OpenAPI openAPI = reader.read(PetResource.class);
+        String yaml = "openapi: 3.1.0\n" +
+                "paths:\n" +
+                "  /pet:\n" +
+                "    put:\n" +
+                "      summary: Update an existing pet\n" +
+                "      operationId: updatePet\n" +
+                "      requestBody:\n" +
+                "        description: Pet object that needs to be added to the store\n" +
+                "        content:\n" +
+                "          application/json:\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/Pet\"\n" +
+                "        required: true\n" +
+                "      responses:\n" +
+                "        \"400\":\n" +
+                "          description: Invalid ID supplied\n" +
+                "        \"404\":\n" +
+                "          description: Pet not found\n" +
+                "        \"405\":\n" +
+                "          description: Validation exception\n" +
+                "    post:\n" +
+                "      summary: Add a new pet to the store\n" +
+                "      operationId: addPet\n" +
+                "      requestBody:\n" +
+                "        description: Pet object that needs to be added to the store\n" +
+                "        content:\n" +
+                "          application/json:\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/Pet\"\n" +
+                "          application/xml:\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/Pet\"\n" +
+                "        required: true\n" +
+                "      responses:\n" +
+                "        \"405\":\n" +
+                "          description: Invalid input\n" +
+                "  /pet/bodyid:\n" +
+                "    post:\n" +
+                "      summary: Add a new pet to the store passing an integer with generic parameter\n" +
+                "        annotation\n" +
+                "      operationId: addPetByInteger\n" +
+                "      requestBody:\n" +
+                "        description: Pet object that needs to be added to the store\n" +
+                "        content:\n" +
+                "          application/json:\n" +
+                "            schema:\n" +
+                "              type: integer\n" +
+                "              format: int32\n" +
+                "          application/xml:\n" +
+                "            schema:\n" +
+                "              type: integer\n" +
+                "              format: int32\n" +
+                "        required: true\n" +
+                "      responses:\n" +
+                "        \"405\":\n" +
+                "          description: Invalid input\n" +
+                "  /pet/bodyidnoannotation:\n" +
+                "    post:\n" +
+                "      summary: Add a new pet to the store passing an integer without parameter annotation\n" +
+                "      operationId: addPetByIntegerNoAnnotation\n" +
+                "      requestBody:\n" +
+                "        content:\n" +
+                "          application/json:\n" +
+                "            schema:\n" +
+                "              type: integer\n" +
+                "              format: int32\n" +
+                "          application/xml:\n" +
+                "            schema:\n" +
+                "              type: integer\n" +
+                "              format: int32\n" +
+                "      responses:\n" +
+                "        \"405\":\n" +
+                "          description: Invalid input\n" +
+                "  /pet/bodynoannotation:\n" +
+                "    post:\n" +
+                "      summary: Add a new pet to the store no annotation\n" +
+                "      operationId: addPetNoAnnotation\n" +
+                "      requestBody:\n" +
+                "        content:\n" +
+                "          application/json:\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/Pet\"\n" +
+                "          application/xml:\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/Pet\"\n" +
+                "      responses:\n" +
+                "        \"405\":\n" +
+                "          description: Invalid input\n" +
+                "  /pet/findByStatus:\n" +
+                "    get:\n" +
+                "      summary: Finds Pets by status\n" +
+                "      description: Multiple status values can be provided with comma separated strings\n" +
+                "      operationId: findPetsByStatus\n" +
+                "      parameters:\n" +
+                "      - name: status\n" +
+                "        in: query\n" +
+                "        description: Status values that need to be considered for filter\n" +
+                "        required: true\n" +
+                "        schema:\n" +
+                "          type: string\n" +
+                "      - name: skip\n" +
+                "        in: query\n" +
+                "        schema:\n" +
+                "          type: integer\n" +
+                "          format: int32\n" +
+                "      - name: limit\n" +
+                "        in: query\n" +
+                "        schema:\n" +
+                "          type: integer\n" +
+                "          format: int32\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          content:\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/Pet\"\n" +
+                "        \"400\":\n" +
+                "          description: Invalid status value\n" +
+                "  /pet/findByTags:\n" +
+                "    get:\n" +
+                "      summary: Finds Pets by tags\n" +
+                "      description: \"Multiple tags can be provided with comma separated strings. Use\\\n" +
+                "        \\ tag1, tag2, tag3 for testing.\"\n" +
+                "      operationId: findPetsByTags\n" +
+                "      parameters:\n" +
+                "      - name: tags\n" +
+                "        in: query\n" +
+                "        description: Tags to filter by\n" +
+                "        required: true\n" +
+                "        schema:\n" +
+                "          type: string\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: Pets matching criteria\n" +
+                "          content:\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/Pet\"\n" +
+                "        \"400\":\n" +
+                "          description: Invalid tag value\n" +
+                "      deprecated: true\n" +
+                "  /pet/{petId}:\n" +
+                "    get:\n" +
+                "      summary: Find pet by ID\n" +
+                "      description: Returns a pet when 0 < ID <= 10.  ID > 10 or nonintegers will simulate\n" +
+                "        API error conditions\n" +
+                "      operationId: getPetById\n" +
+                "      parameters:\n" +
+                "      - name: petId\n" +
+                "        in: path\n" +
+                "        description: ID of pet that needs to be fetched\n" +
+                "        required: true\n" +
+                "        schema:\n" +
+                "          type: integer\n" +
+                "          format: int64\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: The pet\n" +
+                "          content:\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/Pet\"\n" +
+                "            application/xml:\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/Pet\"\n" +
+                "        \"400\":\n" +
+                "          description: Invalid ID supplied\n" +
+                "        \"404\":\n" +
+                "          description: Pet not found\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    Bar:\n" +
+                "      type: object\n" +
+                "      deprecated: true\n" +
+                "      description: Bar\n" +
+                "      properties:\n" +
+                "        foo:\n" +
+                "          type: string\n" +
+                "          const: bar\n" +
+                "        bar:\n" +
+                "          type: integer\n" +
+                "          format: int32\n" +
+                "          exclusiveMaximum: 4\n" +
+                "        foobar:\n" +
+                "          type:\n" +
+                "          - integer\n" +
+                "          - string\n" +
+                "          format: int32\n" +
+                "    Category:\n" +
+                "      type: object\n" +
+                "      properties:\n" +
+                "        id:\n" +
+                "          type: integer\n" +
+                "          format: int64\n" +
+                "        name:\n" +
+                "          type: string\n" +
+                "      xml:\n" +
+                "        name: Category\n" +
+                "    Foo:\n" +
+                "      type: object\n" +
+                "      deprecated: true\n" +
+                "      description: Foo\n" +
+                "      properties:\n" +
+                "        foo:\n" +
+                "          type: string\n" +
+                "          const: foo\n" +
+                "        bar:\n" +
+                "          type: integer\n" +
+                "          format: int32\n" +
+                "          exclusiveMaximum: 2\n" +
+                "        foobar:\n" +
+                "          type:\n" +
+                "          - integer\n" +
+                "          - string\n" +
+                "          - object\n" +
+                "          format: int32\n" +
+                "    IfSchema:\n" +
+                "      type: object\n" +
+                "      deprecated: true\n" +
+                "      description: if schema\n" +
+                "      properties:\n" +
+                "        foo:\n" +
+                "          type: string\n" +
+                "          const: foo\n" +
+                "        bar:\n" +
+                "          type: integer\n" +
+                "          format: int32\n" +
+                "          exclusiveMaximum: 2\n" +
+                "        foobar:\n" +
+                "          type:\n" +
+                "          - integer\n" +
+                "          - string\n" +
+                "          - object\n" +
+                "          format: int32\n" +
+                "    Pet:\n" +
+                "      type: object\n" +
+                "      properties:\n" +
+                "        id:\n" +
+                "          type: integer\n" +
+                "          format: int64\n" +
+                "        category:\n" +
+                "          $ref: \"#/components/schemas/Category\"\n" +
+                "        name:\n" +
+                "          type: string\n" +
+                "        photoUrls:\n" +
+                "          type: array\n" +
+                "          items:\n" +
+                "            type: string\n" +
+                "            xml:\n" +
+                "              name: photoUrl\n" +
+                "          xml:\n" +
+                "            wrapped: true\n" +
+                "        tags:\n" +
+                "          type: array\n" +
+                "          items:\n" +
+                "            $ref: \"#/components/schemas/Tag\"\n" +
+                "          xml:\n" +
+                "            wrapped: true\n" +
+                "        status:\n" +
+                "          type: string\n" +
+                "          if:\n" +
+                "            $ref: \"#/components/schemas/IfSchema\"\n" +
+                "          $id: idtest\n" +
+                "          description: pet status in the store\n" +
+                "          enum:\n" +
+                "          - \"available,pending,sold\"\n" +
+                "      xml:\n" +
+                "        name: Pet\n" +
+                "    Tag:\n" +
+                "      type: object\n" +
+                "      properties:\n" +
+                "        id:\n" +
+                "          type: integer\n" +
+                "          format: int64\n" +
+                "        name:\n" +
+                "          type: string\n" +
+                "        annotated:\n" +
+                "          $ref: \"#/components/schemas/Category\"\n" +
+                "          description: child description\n" +
+                "          properties:\n" +
+                "            foo:\n" +
+                "              $ref: \"#/components/schemas/Foo\"\n" +
+                "            bar:\n" +
+                "              $ref: \"#/components/schemas/Bar\"\n" +
+                "      xml:\n" +
+                "        name: Tag\n";
+        SerializationMatchers.assertEqualsToYaml31(openAPI, yaml);
+    }
+
+    @Test
+    public void test31RefSiblings() {
+        SwaggerConfiguration config = new SwaggerConfiguration().openAPI31(true).openAPI(new OpenAPI());
+        Reader reader = new Reader(config);
+
+        OpenAPI openAPI = reader.read(TagResource.class);
+        String yaml = "openapi: 3.1.0\n" +
+                "paths:\n" +
+                "  /tag/tag:\n" +
+                "    get:\n" +
+                "      operationId: getTag\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            '*/*':\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/SimpleTag\"\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    Foo:\n" +
+                "      type: object\n" +
+                "      deprecated: true\n" +
+                "      description: Foo\n" +
+                "      properties:\n" +
+                "        foo:\n" +
+                "          type: string\n" +
+                "          const: foo\n" +
+                "        bar:\n" +
+                "          type: integer\n" +
+                "          format: int32\n" +
+                "          exclusiveMaximum: 2\n" +
+                "        foobar:\n" +
+                "          type:\n" +
+                "          - integer\n" +
+                "          - string\n" +
+                "          - object\n" +
+                "          format: int32\n" +
+                "    SimpleTag:\n" +
+                "      type: object\n" +
+                "      properties:\n" +
+                "        annotated:\n" +
+                "          $ref: \"#/components/schemas/SimpleCategory\"\n" +
+                "          description: child description\n" +
+                "          properties:\n" +
+                "            foo:\n" +
+                "              $ref: \"#/components/schemas/Foo\"\n" +
+                "    SimpleCategory:\n" +
+                "      type: object\n" ;
+        SerializationMatchers.assertEqualsToYaml31(openAPI, yaml);
+    }
+
+    @Test
+    public void testSiblings() {
+        Reader reader = new Reader(new SwaggerConfiguration().openAPI(new OpenAPI()).openAPI31(true));
+
+        OpenAPI openAPI = reader.read(SiblingsResource.class);
+        String yaml = "openapi: 3.1.0\n" +
+                "paths:\n" +
+                "  /test:\n" +
+                "    get:\n" +
+                "      operationId: getCart\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            '*/*':\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/Pet\"\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    Category:\n" +
+                "      type: object\n" +
+                "      description: parent\n" +
+                "      properties:\n" +
+                "        id:\n" +
+                "          type: integer\n" +
+                "          format: int64\n" +
+                "    Pet:\n" +
+                "      type: object\n" +
+                "      description: Pet\n" +
+                "      properties:\n" +
+                "        category:\n" +
+                "          $ref: \"#/components/schemas/Category\"\n" +
+                "          description: child\n";
+        SerializationMatchers.assertEqualsToYaml31(openAPI, yaml);
+    }
+
+    @Test
+    public void testSiblingsOnResource() {
+        Reader reader = new Reader(new SwaggerConfiguration().openAPI(new OpenAPI()).openAPI31(true));
+
+        OpenAPI openAPI = reader.read(SiblingsResourceSimple.class);
+        String yaml = "openapi: 3.1.0\n" +
+                "paths:\n" +
+                "  /test:\n" +
+                "    get:\n" +
+                "      operationId: getCart\n" +
+                "      responses:\n" +
+                "        \"300\":\n" +
+                "          description: aaa\n" +
+                "          content:\n" +
+                "            '*/*':\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/PetSimple\"\n" +
+                "                description: resource pet\n" +
+                "                readOnly: true\n" +
+                "  /test/impl:\n" +
+                "    get:\n" +
+                "      operationId: getCartImpl\n" +
+                "      responses:\n" +
+                "        \"300\":\n" +
+                "          description: aaa\n" +
+                "          content:\n" +
+                "            '*/*':\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/PetSimple\"\n" +
+                "                description: resource pet\n" +
+                "                readOnly: true\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    PetSimple:\n" +
+                "      type: object\n" +
+                "      description: Pet\n";
+        SerializationMatchers.assertEqualsToYaml31(openAPI, yaml);
+    }
+
+    @Test
+    public void testSiblingsOnResourceResponse() {
+        Reader reader = new Reader(new SwaggerConfiguration().openAPI(new OpenAPI()).openAPI31(true));
+
+        OpenAPI openAPI = reader.read(SiblingsResourceResponse.class);
+        String yaml = "openapi: 3.1.0\n" +
+                "paths:\n" +
+                "  /test:\n" +
+                "    get:\n" +
+                "      operationId: getCart\n" +
+                "      responses:\n" +
+                "        \"300\":\n" +
+                "          description: aaa\n" +
+                "          content:\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/PetSimple\"\n" +
+                "                description: resource pet\n" +
+                "                readOnly: true\n" +
+                "            application/xml:\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/PetSimple\"\n" +
+                "                description: resource pet xml\n" +
+                "                readOnly: true\n" +
+                "  /test/impl:\n" +
+                "    get:\n" +
+                "      operationId: getCartImpl\n" +
+                "      responses:\n" +
+                "        \"300\":\n" +
+                "          description: aaa\n" +
+                "          content:\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/PetSimple\"\n" +
+                "                description: resource pet\n" +
+                "                readOnly: true\n" +
+                "            application/xml:\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/PetSimple\"\n" +
+                "                description: resource pet xml\n" +
+                "                readOnly: true\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    PetSimple:\n" +
+                "      type: object\n" +
+                "      description: Pet\n";
+        SerializationMatchers.assertEqualsToYaml31(openAPI, yaml);
+    }
+
+    @Test
+    public void testSiblingsOnResourceRequestBody() {
+        Reader reader = new Reader(new SwaggerConfiguration().openAPI(new OpenAPI()).openAPI31(true));
+
+        OpenAPI openAPI = reader.read(SiblingsResourceRequestBody.class);
+        String yaml = "openapi: 3.1.0\n" +
+                "paths:\n" +
+                "  /test/bodyimpl:\n" +
+                "    get:\n" +
+                "      operationId: getBodyImpl\n" +
+                "      requestBody:\n" +
+                "        description: aaa\n" +
+                "        content:\n" +
+                "          application/json:\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/PetSimple\"\n" +
+                "              description: resource pet\n" +
+                "              writeOnly: true\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            '*/*': {}\n" +
+                "  /test/bodyimplparam:\n" +
+                "    get:\n" +
+                "      operationId: getBodyImplParam\n" +
+                "      requestBody:\n" +
+                "        content:\n" +
+                "          '*/*':\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/PetSimple\"\n" +
+                "              description: resource pet\n" +
+                "              writeOnly: true\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            '*/*': {}\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    PetSimple:\n" +
+                "      type: object\n" +
+                "      description: Pet\n";
+        SerializationMatchers.assertEqualsToYaml31(openAPI, yaml);
+    }
+
+    @Test
+    public void testSiblingsOnResourceRequestBodyMultiple() {
+        Reader reader = new Reader(new SwaggerConfiguration().openAPI(new OpenAPI()).openAPI31(true));
+
+        OpenAPI openAPI = reader.read(SiblingsResourceRequestBodyMultiple.class);
+        String yaml = "openapi: 3.1.0\n" +
+                "paths:\n" +
+                "  /test/bodyimpl:\n" +
+                "    get:\n" +
+                "      operationId: getBodyImpl\n" +
+                "      requestBody:\n" +
+                "        description: aaa\n" +
+                "        content:\n" +
+                "          application/json:\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/PetSimple\"\n" +
+                "              description: resource pet\n" +
+                "              writeOnly: true\n" +
+                "          application/xml:\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/PetSimple\"\n" +
+                "              description: resource pet xml\n" +
+                "              writeOnly: true\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            '*/*': {}\n" +
+                "  /test/bodyimplparam:\n" +
+                "    get:\n" +
+                "      operationId: getBodyImplParam\n" +
+                "      requestBody:\n" +
+                "        content:\n" +
+                "          application/json:\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/PetSimple\"\n" +
+                "              description: resource pet\n" +
+                "              writeOnly: true\n" +
+                "          application/xml:\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/PetSimple\"\n" +
+                "              description: resource pet xml\n" +
+                "              writeOnly: true\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            '*/*': {}\n" +
+                "  /test/bodyparam:\n" +
+                "    get:\n" +
+                "      operationId: getBodyParam\n" +
+                "      requestBody:\n" +
+                "        description: test\n" +
+                "        content:\n" +
+                "          application/json:\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/PetSimple\"\n" +
+                "              description: resource pet\n" +
+                "              writeOnly: true\n" +
+                "          application/xml:\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/PetSimple\"\n" +
+                "              description: resource pet xml\n" +
+                "              writeOnly: true\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            '*/*': {}\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    PetSimple:\n" +
+                "      type: object\n" +
+                "      description: Pet\n";
+        SerializationMatchers.assertEqualsToYaml31(openAPI, yaml);
+    }
+
+    @Test
+    public void testSiblingsOnProperty() {
+        Reader reader = new Reader(new SwaggerConfiguration().openAPI(new OpenAPI()).openAPI31(true));
+        Set<Class<?>> classes = new HashSet<>(Arrays.asList(SiblingPropResource.class, WebHookResource.class));
+        OpenAPI openAPI = reader.read(classes);
+        String yaml = "openapi: 3.1.0\n" +
+                "paths:\n" +
+                "  /pet:\n" +
+                "    put:\n" +
+                "      tags:\n" +
+                "      - pet\n" +
+                "      summary: Update an existing pet\n" +
+                "      operationId: updatePet\n" +
+                "      requestBody:\n" +
+                "        description: Pet object that needs to be updated in the store\n" +
+                "        content:\n" +
+                "          application/json:\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/Pet\"\n" +
+                "              description: A Pet in JSON Format\n" +
+                "              required:\n" +
+                "              - id\n" +
+                "              writeOnly: true\n" +
+                "          application/xml:\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/Pet\"\n" +
+                "              description: A Pet in XML Format\n" +
+                "              required:\n" +
+                "              - id\n" +
+                "              writeOnly: true\n" +
+                "        required: true\n" +
+                "      responses:\n" +
+                "        \"200\":\n" +
+                "          description: Successful operation\n" +
+                "          content:\n" +
+                "            application/xml:\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/Pet\"\n" +
+                "                description: A Pet in XML Format\n" +
+                "                readOnly: true\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/Pet\"\n" +
+                "                description: A Pet in JSON Format\n" +
+                "                readOnly: true\n" +
+                "        \"400\":\n" +
+                "          description: Invalid ID supplied\n" +
+                "        \"404\":\n" +
+                "          description: Pet not found\n" +
+                "        \"405\":\n" +
+                "          description: Validation exception\n" +
+                "      security:\n" +
+                "      - petstore_auth:\n" +
+                "        - write:pets\n" +
+                "        - read:pets\n" +
+                "      - mutual_tls: []\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    Category:\n" +
+                "      type: object\n" +
+                "      description: parent\n" +
+                "      properties:\n" +
+                "        id:\n" +
+                "          type: integer\n" +
+                "          format: int64\n" +
+                "    Pet:\n" +
+                "      type: object\n" +
+                "      description: Pet\n" +
+                "      properties:\n" +
+                "        category:\n" +
+                "          $ref: \"#/components/schemas/Category\"\n" +
+                "          description: child\n" +
+                "webhooks:\n" +
+                "  newPet:\n" +
+                "    post:\n" +
+                "      requestBody:\n" +
+                "        description: Information about a new pet in the system\n" +
+                "        content:\n" +
+                "          application/json:\n" +
+                "            schema:\n" +
+                "              $ref: \"#/components/schemas/Pet\"\n" +
+                "              description: Webhook Pet\n" +
+                "      responses:\n" +
+                "        \"200\":\n" +
+                "          description: Return a 200 status to indicate that the data was received\n" +
+                "            successfully\n";
+        SerializationMatchers.assertEqualsToYaml31(openAPI, yaml);
+    }
+
+    @Test
+    public void testMisc31() {
+        Reader reader = new Reader(new SwaggerConfiguration().openAPI(new OpenAPI()).openAPI31(true));
+        Set<Class<?>> classes = new HashSet<>(Arrays.asList(Misc31Resource.class));
+        OpenAPI openAPI = reader.read(classes);
+        String yaml = "openapi: 3.1.0\n" +
+                "paths:\n" +
+                "  /pet:\n" +
+                "    put:\n" +
+                "      operationId: updatePet\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/ModelWithOAS31Stuff\"\n" +
+                "            application/xml:\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/ModelWithOAS31Stuff\"\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    ModelWithOAS31Stuff:\n" +
+                "      type: object\n" +
+                "      $comment: Random comment at schema level\n" +
+                "      $id: http://yourdomain.com/schemas/myschema.json\n" +
+                "      description: this is model for testing OAS 3.1 resolving\n" +
+                "      properties:\n" +
+                "        randomList:\n" +
+                "          type: array\n" +
+                "          contains:\n" +
+                "            type: string\n" +
+                "          items:\n" +
+                "            type: string\n" +
+                "          maxContains: 10\n" +
+                "          minContains: 1\n" +
+                "          prefixItems:\n" +
+                "          - type: string\n" +
+                "          unevaluatedItems:\n" +
+                "            type: number\n" +
+                "        status:\n" +
+                "          type:\n" +
+                "          - string\n" +
+                "          - number\n" +
+                "        intValue:\n" +
+                "          type: integer\n" +
+                "          format: int32\n" +
+                "          $anchor: intValue\n" +
+                "          $comment: comment at schema property level\n" +
+                "          exclusiveMaximum: 100\n" +
+                "          exclusiveMinimum: 1\n" +
+                "        text:\n" +
+                "          type: string\n" +
+                "          contentEncoding: plan/text\n" +
+                "          contentMediaType: base64\n" +
+                "        encodedString:\n" +
+                "          type: string\n" +
+                "          contentMediaType: application/jwt\n" +
+                "          contentSchema:\n" +
+                "            $ref: \"#/components/schemas/MultipleBaseBean\"\n" +
+                "        address:\n" +
+                "          $ref: \"#/components/schemas/Address\"\n" +
+                "        client:\n" +
+                "          type: string\n" +
+                "          dependentSchemas:\n" +
+                "            creditCard:\n" +
+                "              $ref: \"#/components/schemas/CreditCard\"\n" +
+                "    MultipleBaseBean:\n" +
+                "      type: object\n" +
+                "      description: MultipleBaseBean\n" +
+                "      properties:\n" +
+                "        beanType:\n" +
+                "          type: string\n" +
+                "        a:\n" +
+                "          type: integer\n" +
+                "          format: int32\n" +
+                "        b:\n" +
+                "          type: string\n" +
+                "    MultipleSub1Bean:\n" +
+                "      allOf:\n" +
+                "      - $ref: \"#/components/schemas/MultipleBaseBean\"\n" +
+                "      - type: object\n" +
+                "        properties:\n" +
+                "          c:\n" +
+                "            type: integer\n" +
+                "            format: int32\n" +
+                "      description: MultipleSub1Bean\n" +
+                "    MultipleSub2Bean:\n" +
+                "      allOf:\n" +
+                "      - $ref: \"#/components/schemas/MultipleBaseBean\"\n" +
+                "      - type: object\n" +
+                "        properties:\n" +
+                "          d:\n" +
+                "            type: integer\n" +
+                "            format: int32\n" +
+                "      description: MultipleSub2Bean\n" +
+                "    Address:\n" +
+                "      type: object\n" +
+                "      if:\n" +
+                "        $ref: \"#/components/schemas/AnnotatedCountry\"\n" +
+                "      then:\n" +
+                "        $ref: \"#/components/schemas/PostalCodeNumberPattern\"\n" +
+                "      else:\n" +
+                "        $ref: \"#/components/schemas/PostalCodePattern\"\n" +
+                "      dependentRequired:\n" +
+                "        street:\n" +
+                "        - country\n" +
+                "      properties:\n" +
+                "        street:\n" +
+                "          type: string\n" +
+                "        country:\n" +
+                "          type: string\n" +
+                "          enum:\n" +
+                "          - United States of America\n" +
+                "          - Canada\n" +
+                "      propertyNames:\n" +
+                "        $ref: \"#/components/schemas/PropertyNamesPattern\"\n" +
+                "    AnnotatedCountry:\n" +
+                "      type: object\n" +
+                "      properties:\n" +
+                "        country:\n" +
+                "          const: United States\n" +
+                "    CreditCard:\n" +
+                "      type: object\n" +
+                "      properties:\n" +
+                "        billingAddress:\n" +
+                "          type: string\n" +
+                "    PostalCodeNumberPattern:\n" +
+                "      type: object\n" +
+                "      properties:\n" +
+                "        postalCode:\n" +
+                "          pattern: \"[0-9]{5}(-[0-9]{4})?\"\n" +
+                "    PostalCodePattern:\n" +
+                "      type: object\n" +
+                "      properties:\n" +
+                "        postalCode:\n" +
+                "          pattern: \"[A-Z][0-9][A-Z] [0-9][A-Z][0-9]\"\n" +
+                "    PropertyNamesPattern:\n" +
+                "      type: object\n" +
+                "      pattern: \"^[A-Za-z_][A-Za-z0-9_]*$\"\n";
+        SerializationMatchers.assertEqualsToYaml31(openAPI, yaml);
+    }
+
+    @Test
+    public void test4446CyclicProp() {
+        Reader reader = new Reader(new OpenAPI());
+
+        OpenAPI openAPI = reader.read(Ticket4446Resource.class);
+        String yaml = "openapi: 3.0.1\n" +
+                "paths:\n" +
+                "  /test/test:\n" +
+                "    get:\n" +
+                "      operationId: getCart\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            '*/*':\n" +
+                "              schema:\n" +
+                "                $ref: \"#/components/schemas/MyPojo\"\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    MyPojo:\n" +
+                "      type: object\n" +
+                "      properties:\n" +
+                "        someStrings:\n" +
+                "          type: array\n" +
+                "          items:\n" +
+                "            type: string\n" +
+                "        morePojos:\n" +
+                "          type: array\n" +
+                "          items:\n" +
+                "            $ref: \"#/components/schemas/MyPojo\"\n";
+        SerializationMatchers.assertEqualsToYaml(openAPI, yaml);
+    }
+
+    @Test
+    public void testParameterMaximumValue() {
+        Reader reader = new Reader(new SwaggerConfiguration().openAPI(new OpenAPI()).openAPI31(true));
+
+        OpenAPI openAPI = reader.read(ParameterMaximumValueResource.class);
+        String yaml = "openapi: 3.1.0\n" +
+                "paths:\n" +
+                "  /test/{petId}:\n" +
+                "    get:\n" +
+                "      operationId: getPetById\n" +
+                "      parameters:\n" +
+                "      - name: petId\n" +
+                "        in: path\n" +
+                "        description: ID of pet that needs to be fetched\n" +
+                "        required: true\n" +
+                "        schema:\n" +
+                "          type: integer\n" +
+                "          format: int64\n" +
+                "          exclusiveMaximum: 10\n" +
+                "          exclusiveMinimum: 1\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            '*/*': {}\n";
+        SerializationMatchers.assertEqualsToYaml31(openAPI, yaml);
+    }
+
+    @Test
+    public void test4483Response() {
+        Reader reader = new Reader(new OpenAPI());
+
+        OpenAPI openAPI = reader.read(Ticket4483Resource.class);
+        String yaml = "openapi: 3.0.1\n" +
+                "tags:\n" +
+                "- name: Dummy\n" +
+                "  description: Dummy resource for testing setup\n" +
+                "paths:\n" +
+                "  /test:\n" +
+                "    get:\n" +
+                "      tags:\n" +
+                "      - Dummy\n" +
+                "      description: Dummy GET\n" +
+                "      operationId: dummy\n" +
+                "      responses:\n" +
+                "        \"401\":\n" +
+                "          description: Authentication is required\n" +
+                "          content:\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                type: array\n" +
+                "                items:\n" +
+                "                  $ref: \"#/components/schemas/LocalizedError\"\n" +
+                "        \"200\":\n" +
+                "          description: test\n" +
+                "          content:\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                type: object\n" +
+                "                additionalProperties:\n" +
+                "                  type: boolean\n" +
+                "  /test/opresp:\n" +
+                "    get:\n" +
+                "      tags:\n" +
+                "      - Dummy\n" +
+                "      operationId: dummyopresp\n" +
+                "      responses:\n" +
+                "        \"401\":\n" +
+                "          description: Authentication is required\n" +
+                "          content:\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                type: array\n" +
+                "                items:\n" +
+                "                  $ref: \"#/components/schemas/LocalizedError\"\n" +
+                "        \"200\":\n" +
+                "          description: Dummy GET opresp\n" +
+                "          content:\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                type: object\n" +
+                "                additionalProperties:\n" +
+                "                  type: boolean\n" +
+                "  /test/oprespnodesc:\n" +
+                "    get:\n" +
+                "      tags:\n" +
+                "      - Dummy\n" +
+                "      operationId: oprespnodesc\n" +
+                "      responses:\n" +
+                "        \"401\":\n" +
+                "          description: Authentication is required\n" +
+                "          content:\n" +
+                "            application/json:\n" +
+                "              schema:\n" +
+                "                type: array\n" +
+                "                items:\n" +
+                "                  $ref: \"#/components/schemas/LocalizedError\"\n" +
+                "components:\n" +
+                "  schemas:\n" +
+                "    LocalizedError:\n" +
+                "      type: object\n" +
+                "      properties:\n" +
+                "        code:\n" +
+                "          type: string\n" +
+                "        message:\n" +
+                "          type: string\n";
+        SerializationMatchers.assertEqualsToYaml(openAPI, yaml);
+    }
+
+    @Test(description = "openAPIVersion")
+    public void testOpenAPIVersion() {
+        SwaggerConfiguration config = new SwaggerConfiguration().openAPIVersion("3.0.4");
+        Reader reader = new Reader(config);
+
+        OpenAPI openAPI = reader.read(DefaultResponseResource.class);
+        String yaml = "openapi: 3.0.4\n" +
+                "paths:\n" +
+                "  /:\n" +
+                "    get:\n" +
+                "      operationId: test\n" +
+                "      responses:\n" +
+                "        default:\n" +
+                "          description: default response\n" +
+                "          content:\n" +
+                "            '*/*':\n" +
+                "              schema:\n" +
+                "                type: string\n";
         SerializationMatchers.assertEqualsToYaml(openAPI, yaml);
     }
 }

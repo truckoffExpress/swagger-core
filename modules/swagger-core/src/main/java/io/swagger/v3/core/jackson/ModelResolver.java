@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.introspect.Annotated;
 import com.fasterxml.jackson.databind.introspect.AnnotatedClass;
+import com.fasterxml.jackson.databind.introspect.AnnotatedField;
 import com.fasterxml.jackson.databind.introspect.AnnotatedMember;
 import com.fasterxml.jackson.databind.introspect.AnnotatedMethod;
 import com.fasterxml.jackson.databind.introspect.BeanPropertyDefinition;
@@ -34,10 +35,14 @@ import io.swagger.v3.core.util.AnnotationsUtils;
 import io.swagger.v3.core.util.Constants;
 import io.swagger.v3.core.util.Json;
 import io.swagger.v3.core.util.ObjectMapperFactory;
-import io.swagger.v3.core.util.OptionalUtils;
+import io.swagger.v3.core.util.ReferenceTypeUtils;
 import io.swagger.v3.core.util.PrimitiveType;
 import io.swagger.v3.core.util.ReflectionUtils;
 import io.swagger.v3.oas.annotations.Hidden;
+import io.swagger.v3.oas.annotations.StringToClassMapItem;
+import io.swagger.v3.oas.annotations.media.DependentRequired;
+import io.swagger.v3.oas.annotations.media.DependentSchema;
+import io.swagger.v3.oas.annotations.media.DependentSchemas;
 import io.swagger.v3.oas.annotations.media.DiscriminatorMapping;
 import io.swagger.v3.oas.annotations.media.PatternProperties;
 import io.swagger.v3.oas.annotations.media.PatternProperty;
@@ -49,6 +54,7 @@ import io.swagger.v3.oas.models.media.ArraySchema;
 import io.swagger.v3.oas.models.media.ComposedSchema;
 import io.swagger.v3.oas.models.media.Discriminator;
 import io.swagger.v3.oas.models.media.IntegerSchema;
+import io.swagger.v3.oas.models.media.JsonSchema;
 import io.swagger.v3.oas.models.media.MapSchema;
 import io.swagger.v3.oas.models.media.NumberSchema;
 import io.swagger.v3.oas.models.media.ObjectSchema;
@@ -74,8 +80,11 @@ import javax.xml.bind.annotation.XmlElement;
 import javax.xml.bind.annotation.XmlElementRef;
 import javax.xml.bind.annotation.XmlElementRefs;
 import javax.xml.bind.annotation.XmlRootElement;
+import javax.xml.bind.annotation.XmlSchema;
 import java.io.IOException;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.AnnotatedParameterizedType;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
@@ -92,6 +101,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -108,10 +118,16 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
 
     public static boolean composedModelPropertiesAsSibling = System.getProperty(SET_PROPERTY_OF_COMPOSED_MODEL_AS_SIBLING) != null;
 
+    private static final int SCHEMA_COMPONENT_PREFIX = "#/components/schemas/".length();
+
     /**
      * Allows all enums to be resolved as a reference to a scheme added to the components section.
      */
     public static boolean enumsAsRef = System.getProperty(SET_PROPERTY_OF_ENUMS_AS_REF) != null;
+
+    private boolean openapi31;
+
+    private Schema.SchemaResolution schemaResolution = Schema.SchemaResolution.DEFAULT;
 
     public ModelResolver(ObjectMapper mapper) {
         super(mapper);
@@ -126,7 +142,6 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
 
     @Override
     public Schema resolve(AnnotatedType annotatedType, ModelConverterContext context, Iterator<ModelConverter> next) {
-
         boolean isPrimitive = false;
         Schema model = null;
         List<String> requiredProps = new ArrayList<>();
@@ -186,18 +201,22 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
             if (!annotatedType.isSkipSchemaName() && resolvedSchemaAnnotation != null && !resolvedSchemaAnnotation.name().isEmpty()) {
                 name = resolvedSchemaAnnotation.name();
             }
-            if (StringUtils.isBlank(name) && !ReflectionUtils.isSystemType(type)) {
+            if (StringUtils.isBlank(name) && (type.isEnumType() || !ReflectionUtils.isSystemType(type))) {
                 name = _typeName(type, beanDesc);
             }
         }
 
         name = decorateModelName(annotatedType, name);
 
-        // if we have a ref we don't consider anything else
+        // if we have a ref, for OAS 3.0 we don't consider anything else, while for OAS 3.1 we store the ref and add it later
+        String schemaRefFromAnnotation = null;
         if (resolvedSchemaAnnotation != null &&
                 StringUtils.isNotEmpty(resolvedSchemaAnnotation.ref())) {
             if (resolvedArrayAnnotation == null) {
-                return new Schema().$ref(resolvedSchemaAnnotation.ref()).name(name);
+                schemaRefFromAnnotation = resolvedSchemaAnnotation.ref();
+                if (!openapi31) {
+                    return new JsonSchema().$ref(resolvedSchemaAnnotation.ref()).name(name);
+                }
             } else {
                 ArraySchema schema = new ArraySchema();
                 resolveArraySchema(annotatedType, schema, resolvedArrayAnnotation);
@@ -232,6 +251,7 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                     .resolveAsRef(annotatedType.isResolveAsRef())
                     .jsonViewAnnotation(annotatedType.getJsonViewAnnotation())
                     .propertyName(annotatedType.getPropertyName())
+                    .components(annotatedType.getComponents())
                     .skipOverride(true);
             if (resolvedArrayAnnotation != null) {
                 ArraySchema schema = new ArraySchema();
@@ -243,7 +263,7 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                     innerSchema = primitive;
                 } else {
                     innerSchema = context.resolve(aType);
-                    if (innerSchema != null && "object".equals(innerSchema.getType()) && StringUtils.isNotBlank(innerSchema.getName())) {
+                    if (innerSchema != null && isObjectSchema(innerSchema) && StringUtils.isNotBlank(innerSchema.getName())) {
                         // create a reference for the items
                         if (context.getDefinedModels().containsKey(innerSchema.getName())) {
                             innerSchema = new Schema().$ref(constructRef(innerSchema.getName()));
@@ -256,7 +276,7 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                 return schema;
             } else {
                 Schema implSchema = context.resolve(aType);
-                if (implSchema != null && aType.isResolveAsRef() && "object".equals(implSchema.getType()) && StringUtils.isNotBlank(implSchema.getName())) {
+                if (implSchema != null && aType.isResolveAsRef() && isObjectSchema(implSchema) && StringUtils.isNotBlank(implSchema.getName())) {
                     // create a reference for the items
                     if (context.getDefinedModels().containsKey(implSchema.getName())) {
                         implSchema = new Schema().$ref(constructRef(implSchema.getName()));
@@ -292,10 +312,20 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
             isPrimitive = true;
         }
         if (model == null) {
-            PrimitiveType primitiveType = PrimitiveType.fromType(type);
-            if (primitiveType != null) {
-                model = PrimitiveType.fromType(type).createProperty();
-                isPrimitive = true;
+            if (resolvedSchemaAnnotation != null && StringUtils.isEmpty(resolvedSchemaAnnotation.type())) {
+                PrimitiveType primitiveType = PrimitiveType.fromTypeAndFormat(type, resolvedSchemaAnnotation.format());
+                if (primitiveType != null) {
+                    model = primitiveType.createProperty();
+                    isPrimitive = true;
+                }
+            } 
+
+            if (model == null) {
+                PrimitiveType primitiveType = PrimitiveType.fromType(type);
+                if (primitiveType != null) {
+                    model = primitiveType.createProperty();
+                    isPrimitive = true;
+                }
             }
         }
 
@@ -324,7 +354,11 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
         }
 
         if ("Object".equals(name)) {
-            return new Schema();
+            Schema schema = new Schema();
+            if (schemaRefFromAnnotation != null) {
+                schema.raw$ref(schemaRefFromAnnotation);
+            }
+            return schema;
         }
 
         List<Class<?>> composedSchemaReferencedClasses = getComposedSchemaReferencedClasses(type.getRawClass(), annotatedType.getCtxAnnotations(), resolvedSchemaAnnotation);
@@ -335,8 +369,10 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
             if (xml != null) {
                 model.xml(xml);
             }
-            applyBeanValidatorAnnotations(model, annotatedType.getCtxAnnotations(), null);
-            resolveSchemaMembers(model, annotatedType);
+            if (!type.isEnumType()){
+                applyBeanValidatorAnnotations(model, annotatedType.getCtxAnnotations(), null, false);
+            }
+            resolveSchemaMembers(model, annotatedType, context, next);
             if (resolvedArrayAnnotation != null) {
                 ArraySchema schema = new ArraySchema();
                 resolveArraySchema(annotatedType, schema, resolvedArrayAnnotation);
@@ -350,6 +386,9 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                 model = new Schema().$ref(Components.COMPONENTS_SCHEMAS_REF + name);
             }
             if (!isComposedSchema) {
+                if (schemaRefFromAnnotation != null && model != null) {
+                    model.raw$ref(schemaRefFromAnnotation);
+                }
                 return model;
             }
         }
@@ -385,6 +424,7 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                     .jsonViewAnnotation(annotatedType.getJsonViewAnnotation())
                     .propertyName(annotatedType.getPropertyName())
                     .ctxAnnotations(annotatedType.getCtxAnnotations())
+                    .components(annotatedType.getComponents())
                     .skipOverride(true);
             return context.resolve(aType);
         }
@@ -399,33 +439,46 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                 BeanDescription valueTypeBeanDesc = _mapper.getSerializationConfig().introspect(valueType);
                 pName = _typeName(valueType, valueTypeBeanDesc);
             }
-            Annotation[] schemaAnnotations = null;
+            List<Annotation> strippedCtxAnnotations = new ArrayList<>();
             if (resolvedSchemaAnnotation != null) {
-                schemaAnnotations = new Annotation[]{resolvedSchemaAnnotation};
+                strippedCtxAnnotations.add(0, resolvedSchemaAnnotation);
             }
+            if (annotatedType.getCtxAnnotations() != null) {
+                strippedCtxAnnotations.addAll(Arrays.stream(
+                        annotatedType.getCtxAnnotations()).filter(
+                        ass -> !ass.annotationType().getName().startsWith("io.swagger") && !ass.annotationType().getName().startsWith("javax.validation.constraints")
+                ).collect(Collectors.toList()));
+            }
+
+            Schema.SchemaResolution containerResolvedSchemaResolution = AnnotationsUtils.resolveSchemaResolution(this.schemaResolution, resolvedSchemaAnnotation);
             if (keyType != null && valueType != null) {
-                if (ReflectionUtils.isSystemType(type) && !annotatedType.isSchemaProperty() && !annotatedType.isResolveAsRef()) {
-                    context.resolve(new AnnotatedType().type(valueType).jsonViewAnnotation(annotatedType.getJsonViewAnnotation()));
+                if (ReflectionUtils.isSystemTypeNotArray(type) && !annotatedType.isSchemaProperty() && !annotatedType.isResolveAsRef()) {
+                    context.resolve(new AnnotatedType().components(annotatedType.getComponents()).type(valueType).jsonViewAnnotation(annotatedType.getJsonViewAnnotation()));
                     return null;
                 }
                 Schema addPropertiesSchema = context.resolve(
                         new AnnotatedType()
                                 .type(valueType)
                                 .schemaProperty(annotatedType.isSchemaProperty())
-                                .ctxAnnotations(schemaAnnotations)
+                                .ctxAnnotations(strippedCtxAnnotations.toArray(new Annotation[0]))
                                 .skipSchemaName(true)
                                 .resolveAsRef(annotatedType.isResolveAsRef())
                                 .jsonViewAnnotation(annotatedType.getJsonViewAnnotation())
                                 .propertyName(annotatedType.getPropertyName())
+                                .components(annotatedType.getComponents())
                                 .parent(annotatedType.getParent()));
                 if (addPropertiesSchema != null) {
                     if (StringUtils.isNotBlank(addPropertiesSchema.getName())) {
                         pName = addPropertiesSchema.getName();
                     }
-                    if ("object".equals(addPropertiesSchema.getType()) && pName != null) {
-                        // create a reference for the items
+                    if (isObjectSchema(addPropertiesSchema) && pName != null) {
                         if (context.getDefinedModels().containsKey(pName)) {
-                            addPropertiesSchema = new Schema().$ref(constructRef(pName));
+                            if (Schema.SchemaResolution.INLINE.equals(containerResolvedSchemaResolution) && applySchemaResolution()) {
+                                addPropertiesSchema = context.getDefinedModels().get(pName);
+                            } else {
+                                // create a reference for the items
+                                addPropertiesSchema = new Schema().$ref(constructRef(pName));
+                            }
                         }
                     } else if (addPropertiesSchema.get$ref() != null) {
                         addPropertiesSchema = new Schema().$ref(StringUtils.isNotEmpty(addPropertiesSchema.get$ref()) ? addPropertiesSchema.get$ref() : addPropertiesSchema.getName());
@@ -435,18 +488,19 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                 mapModel.name(name);
                 model = mapModel;
             } else if (valueType != null) {
-                if (ReflectionUtils.isSystemType(type) && !annotatedType.isSchemaProperty() && !annotatedType.isResolveAsRef()) {
-                    context.resolve(new AnnotatedType().type(valueType).jsonViewAnnotation(annotatedType.getJsonViewAnnotation()));
+                if (ReflectionUtils.isSystemTypeNotArray(type) && !annotatedType.isSchemaProperty() && !annotatedType.isResolveAsRef()) {
+                    context.resolve(new AnnotatedType().components(annotatedType.getComponents()).type(valueType).jsonViewAnnotation(annotatedType.getJsonViewAnnotation()));
                     return null;
                 }
                 Schema items = context.resolve(new AnnotatedType()
                         .type(valueType)
                         .schemaProperty(annotatedType.isSchemaProperty())
-                        .ctxAnnotations(schemaAnnotations)
+                        .ctxAnnotations(strippedCtxAnnotations.toArray(new Annotation[0]))
                         .skipSchemaName(true)
                         .resolveAsRef(annotatedType.isResolveAsRef())
                         .propertyName(annotatedType.getPropertyName())
                         .jsonViewAnnotation(annotatedType.getJsonViewAnnotation())
+                        .components(annotatedType.getComponents())
                         .parent(annotatedType.getParent()));
 
                 if (items == null) {
@@ -469,10 +523,14 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                 if (StringUtils.isNotBlank(items.getName())) {
                     pName = items.getName();
                 }
-                if ("object".equals(items.getType()) && pName != null) {
-                    // create a reference for the items
+                if (isObjectSchema(items) && pName != null) {
                     if (context.getDefinedModels().containsKey(pName)) {
-                        items = new Schema().$ref(constructRef(pName));
+                        if (Schema.SchemaResolution.INLINE.equals(containerResolvedSchemaResolution) && applySchemaResolution()) {
+                            items = context.getDefinedModels().get(pName);
+                        } else {
+                            // create a reference for the items
+                            items = new Schema().$ref(constructRef(pName));
+                        }
                     }
                 } else if (items.get$ref() != null) {
                     items = new Schema().$ref(StringUtils.isNotEmpty(items.get$ref()) ? items.get$ref() : items.getName());
@@ -491,18 +549,24 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                 }
             }
         } else if (isComposedSchema) {
-            model = new ComposedSchema()
-                    .type("object")
-                    .name(name);
+            model = new ComposedSchema().name(name);
+            if (openapi31 && resolvedArrayAnnotation == null){
+                model.addType("object");
+            }else{
+                model.type("object");
+            }
         } else {
-            AnnotatedType aType = OptionalUtils.unwrapOptional(annotatedType);
+            AnnotatedType aType = ReferenceTypeUtils.unwrapReference(annotatedType);
             if (aType != null) {
                 model = context.resolve(aType);
                 return model;
             } else {
-                model = new Schema()
-                        .type("object")
-                        .name(name);
+                model = new Schema().name(name);
+                if (openapi31 && resolvedArrayAnnotation == null){
+                    model.addType("object");
+                }else{
+                    model.type("object");
+                }
             }
         }
 
@@ -517,7 +581,7 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
         }
 
         if (!(model instanceof ArraySchema) || (model instanceof ArraySchema && resolvedArrayAnnotation == null)) {
-            resolveSchemaMembers(model, annotatedType);
+            resolveSchemaMembers(model, annotatedType, context, next);
         }
 
         final XmlAccessorType xmlAccessorTypeAnnotation = beanDesc.getClassAnnotations().get(XmlAccessorType.class);
@@ -594,7 +658,8 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                         propType = ((AnnotatedMethod)member).getParameterType(0);
                     }
 
-                }
+                } 
+                
                 String propSchemaName = null;
                 io.swagger.v3.oas.annotations.media.Schema ctxSchema = AnnotationsUtils.getSchemaAnnotation(annotations);
                 if (AnnotationsUtils.hasSchemaAnnotation(ctxSchema)) {
@@ -602,8 +667,8 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                         propSchemaName = ctxSchema.name();
                     }
                 }
+                io.swagger.v3.oas.annotations.media.ArraySchema ctxArraySchema = AnnotationsUtils.getArraySchemaAnnotation(annotations);
                 if (propSchemaName == null) {
-                    io.swagger.v3.oas.annotations.media.ArraySchema ctxArraySchema = AnnotationsUtils.getArraySchemaAnnotation(annotations);
                     if (AnnotationsUtils.hasArrayAnnotation(ctxArraySchema)) {
                         if (AnnotationsUtils.hasSchemaAnnotation(ctxArraySchema.schema())) {
                             if (!StringUtils.isBlank(ctxArraySchema.schema().name())) {
@@ -624,18 +689,47 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                                         (io.swagger.v3.oas.annotations.media.Schema) propSchemaOrArray;
 
                 io.swagger.v3.oas.annotations.media.Schema.AccessMode accessMode = resolveAccessMode(propDef, type, propResolvedSchemaAnnotation);
+                io.swagger.v3.oas.annotations.media.Schema.RequiredMode requiredMode = resolveRequiredMode(propResolvedSchemaAnnotation);
 
+                Annotation[] ctxAnnotation31 = null;
+                Schema.SchemaResolution resolvedSchemaResolution = AnnotationsUtils.resolveSchemaResolution(this.schemaResolution, ctxSchema);
+                if (
+                        Schema.SchemaResolution.ALL_OF.equals(resolvedSchemaResolution) ||
+                                Schema.SchemaResolution.ALL_OF_REF.equals(resolvedSchemaResolution) ||
+                                openapi31) {
+                    List<Annotation> ctxAnnotations31List = new ArrayList<>();
+                    if (annotations != null) {
+                        for (Annotation a : annotations) {
+                            if (
+                                    !(a instanceof io.swagger.v3.oas.annotations.media.Schema) &&
+                                            !(a instanceof io.swagger.v3.oas.annotations.media.ArraySchema)) {
+                                ctxAnnotations31List.add(a);
+                            }
+                            if ((ctxSchema != null) && (!ctxSchema.implementation().equals(Void.class) || StringUtils.isNotEmpty(ctxSchema.type()))) {
+                                ctxAnnotations31List.add(a);
+                            }
+                        }
+                        ctxAnnotation31 = ctxAnnotations31List.toArray(new Annotation[ctxAnnotations31List.size()]);
+                    }
+                }
 
                 AnnotatedType aType = new AnnotatedType()
                         .type(propType)
-                        .ctxAnnotations(annotations)
                         .parent(model)
                         .resolveAsRef(annotatedType.isResolveAsRef())
                         .jsonViewAnnotation(annotatedType.getJsonViewAnnotation())
                         .skipSchemaName(true)
                         .schemaProperty(true)
+                        .components(annotatedType.getComponents())
                         .propertyName(propName);
-
+                if (
+                        Schema.SchemaResolution.ALL_OF.equals(resolvedSchemaResolution) ||
+                                Schema.SchemaResolution.ALL_OF_REF.equals(resolvedSchemaResolution) ||
+                                openapi31) {
+                    aType.ctxAnnotations(ctxAnnotation31);
+                } else {
+                    aType.ctxAnnotations(annotations);
+                }
                 final AnnotatedMember propMember = member;
                 aType.jsonUnwrappedHandler(t -> {
                     JsonUnwrapped uw = propMember.getAnnotation(JsonUnwrapped.class);
@@ -644,24 +738,52 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                             .ctxAnnotations(null)
                             .jsonUnwrappedHandler(null)
                             .resolveAsRef(false);
-                        handleUnwrapped(props, context.resolve(t), uw.prefix(), uw.suffix(), requiredProps);
+                        Schema innerModel = context.resolve(t);
+                        if (StringUtils.isNotBlank(innerModel.get$ref())) {
+                            innerModel = context.getDefinedModels().get(innerModel.get$ref().substring(SCHEMA_COMPONENT_PREFIX));
+                        }
+                        handleUnwrapped(props, innerModel, uw.prefix(), uw.suffix(), requiredProps);
                         return null;
                     } else {
                         return new Schema();
                     }
                 });
-                property = clone(context.resolve(aType));
+                property = context.resolve(aType);
+                property = clone(property);
+                Schema ctxProperty = null;
+                if (!applySchemaResolution()) {
+                    Optional<Schema> reResolvedProperty = AnnotationsUtils.getSchemaFromAnnotation(ctxSchema, annotatedType.getComponents(), null, openapi31, property, schemaResolution, context);
+                    if (reResolvedProperty.isPresent()) {
+                        property = reResolvedProperty.get();
+                    }
+                    reResolvedProperty = AnnotationsUtils.getArraySchema(ctxArraySchema, annotatedType.getComponents(), null, openapi31, property, true);
+                    if (reResolvedProperty.isPresent()) {
+                        property = reResolvedProperty.get();
+                    }
 
+                } else if (Schema.SchemaResolution.ALL_OF.equals(resolvedSchemaResolution) || Schema.SchemaResolution.ALL_OF_REF.equals(resolvedSchemaResolution)) {
+                    Optional<Schema> reResolvedProperty = AnnotationsUtils.getSchemaFromAnnotation(ctxSchema, annotatedType.getComponents(), null, openapi31, null, schemaResolution, context);
+                    if (reResolvedProperty.isPresent()) {
+                        ctxProperty = reResolvedProperty.get();
+                    }
+                    reResolvedProperty = AnnotationsUtils.getArraySchema(ctxArraySchema, annotatedType.getComponents(), null, openapi31, ctxProperty);
+                    if (reResolvedProperty.isPresent()) {
+                        ctxProperty = reResolvedProperty.get();
+                    }
+
+                }
                 if (property != null) {
                     Boolean required = md.getRequired();
-                    if (required != null && !Boolean.FALSE.equals(required)) {
-                        addRequiredItem(model, propName);
-                    } else {
-                        if (propDef.isRequired()) {
+                    if (!io.swagger.v3.oas.annotations.media.Schema.RequiredMode.NOT_REQUIRED.equals(requiredMode)) {
+                        if (required != null && !Boolean.FALSE.equals(required)) {
                             addRequiredItem(model, propName);
+                        } else {
+                            if (propDef.isRequired()) {
+                                addRequiredItem(model, propName);
+                            }
                         }
                     }
-                    if (property.get$ref() == null) {
+                    if (property.get$ref() == null || openapi31) {
                         if (accessMode != null) {
                             switch (accessMode) {
                                 case AUTO:
@@ -680,7 +802,7 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                     }
                     final BeanDescription propBeanDesc = _mapper.getSerializationConfig().introspect(propType);
                     if (property != null && !propType.isContainerType()) {
-                        if ("object".equals(property.getType())) {
+                        if (isObjectSchema(property)) {
                             // create a reference for the property
                             String pName = _typeName(propType, propBeanDesc);
                             if (StringUtils.isNotBlank(property.getName())) {
@@ -688,15 +810,60 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                             }
 
                             if (context.getDefinedModels().containsKey(pName)) {
-                                property = new Schema().$ref(constructRef(pName));
+                                if (Schema.SchemaResolution.INLINE.equals(resolvedSchemaResolution)) {
+                                    property = context.getDefinedModels().get(pName);
+                                } else if (Schema.SchemaResolution.ALL_OF.equals(resolvedSchemaResolution) && ctxProperty != null) {
+                                    property = new Schema()
+                                            .addAllOfItem(ctxProperty)
+                                            .addAllOfItem(new Schema().$ref(constructRef(pName)));
+                                } else if (Schema.SchemaResolution.ALL_OF_REF.equals(resolvedSchemaResolution) && ctxProperty != null) {
+                                    property = ctxProperty.addAllOfItem(new Schema().$ref(constructRef(pName)));
+                                } else {
+                                    property = new Schema().$ref(constructRef(pName));
+                                }
+                                property = clone(property);
+                                // TODO: why is this needed? is it not handled before?
+                                if (openapi31 || Schema.SchemaResolution.INLINE.equals(resolvedSchemaResolution)) {
+                                    Optional<Schema> reResolvedProperty = AnnotationsUtils.getSchemaFromAnnotation(ctxSchema, annotatedType.getComponents(), null, openapi31, property, this.schemaResolution, context);
+                                    if (reResolvedProperty.isPresent()) {
+                                        property = reResolvedProperty.get();
+                                    }
+                                    reResolvedProperty = AnnotationsUtils.getArraySchema(ctxArraySchema, annotatedType.getComponents(), null, openapi31, property);
+                                    if (reResolvedProperty.isPresent()) {
+                                        property = reResolvedProperty.get();
+                                    }
+                                }
                             }
                         } else if (property.get$ref() != null) {
-                            property = new Schema().$ref(StringUtils.isNotEmpty(property.get$ref()) ? property.get$ref() : property.getName());
+                            if (applySchemaResolution()) {
+                                if (Schema.SchemaResolution.ALL_OF.equals(resolvedSchemaResolution) && ctxProperty != null) {
+                                    property = new Schema()
+                                            .addAllOfItem(ctxProperty)
+                                            .addAllOfItem(new Schema().$ref(StringUtils.isNotEmpty(property.get$ref()) ? property.get$ref() : property.getName()));
+                                } else if (Schema.SchemaResolution.ALL_OF_REF.equals(resolvedSchemaResolution) && ctxProperty != null) {
+                                    property = ctxProperty
+                                            .addAllOfItem(new Schema().$ref(StringUtils.isNotEmpty(property.get$ref()) ? property.get$ref() : property.getName()));
+                                } else {
+                                    property = new Schema().$ref(StringUtils.isNotEmpty(property.get$ref()) ? property.get$ref() : property.getName());
+                                }
+                            } else {
+                                if (StringUtils.isEmpty(property.get$ref())) {
+                                    property.$ref(property.getName());
+                                }
+                            }
                         }
                     }
                     property.setName(propName);
                     JAXBAnnotationsHelper.apply(propBeanDesc.getClassInfo(), annotations, property);
-                    applyBeanValidatorAnnotations(property, annotations, model);
+                    if (property != null && io.swagger.v3.oas.annotations.media.Schema.RequiredMode.REQUIRED.equals(requiredMode)) {
+                        addRequiredItem(model, property.getName());
+                    }
+                    if (ctxProperty == null) {
+                        ctxProperty = property;
+                    }
+                    final boolean applyNotNullAnnotations = io.swagger.v3.oas.annotations.media.Schema.RequiredMode.AUTO.equals(requiredMode);
+                    annotations = addGenericTypeArgumentAnnotationsForOptionalField(propDef, annotations);
+                    applyBeanValidatorAnnotations(propDef, ctxProperty, annotations, model, applyNotNullAnnotations);
 
                     props.add(property);
                 }
@@ -706,7 +873,14 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
             modelProps.put(prop.getName(), prop);
         }
         if (modelProps.size() > 0) {
-            model.setProperties(modelProps);
+            if (model.getProperties() == null) {
+                model.setProperties(modelProps);
+            } else {
+                for (String key : modelProps.keySet()) {
+                    model.addProperty(key, modelProps.get(key));
+                }
+            }
+
             for(String propName : requiredProps) {
                 addRequiredItem(model, propName);
             }
@@ -735,7 +909,7 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
          * This must be done after model.setProperties so that the model's set
          * of properties is available to filter from any subtypes
          **/
-        if (!resolveSubtypes(model, beanDesc, context)) {
+        if (!resolveSubtypes(model, beanDesc, context, annotatedType.getJsonViewAnnotation())) {
             model.setDiscriminator(null);
         }
 
@@ -752,7 +926,7 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
             }
             Class<?> not = resolvedSchemaAnnotation.not();
             if (!Void.class.equals(not)) {
-                model.not((new Schema().$ref(context.resolve(new AnnotatedType().type(not).jsonViewAnnotation(annotatedType.getJsonViewAnnotation())).getName())));
+                model.not((new Schema().$ref(context.resolve(new AnnotatedType().components(annotatedType.getComponents()).type(not).jsonViewAnnotation(annotatedType.getJsonViewAnnotation())).getName())));
             }
             if (resolvedSchemaAnnotation.requiredProperties() != null &&
                     resolvedSchemaAnnotation.requiredProperties().length > 0 &&
@@ -782,6 +956,17 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
             }
         }
 
+        if (openapi31) {
+            Map<String, Schema> dependentSchemas = resolveDependentSchemas(type, annotatedType.getCtxAnnotations(), context, annotatedType.getComponents(), annotatedType.getJsonViewAnnotation(), openapi31);
+            if (model != null && dependentSchemas != null && !dependentSchemas.isEmpty()) {
+                if (model.getDependentSchemas() == null) {
+                    model.dependentSchemas(dependentSchemas);
+                } else {
+                    model.getDependentSchemas().putAll(dependentSchemas);
+                }
+            }
+        }
+
         if (isComposedSchema) {
 
             ComposedSchema composedSchema = (ComposedSchema) model;
@@ -796,8 +981,11 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                     .filter(c -> !(c.equals(Void.class)))
                     .collect(Collectors.toList());
             allOfFiltered.forEach(c -> {
-                Schema allOfRef = context.resolve(new AnnotatedType().type(c).jsonViewAnnotation(annotatedType.getJsonViewAnnotation()));
-                Schema refSchema = new Schema().$ref(allOfRef.getName());
+                Schema allOfRef = context.resolve(new AnnotatedType().components(annotatedType.getComponents()).type(c).jsonViewAnnotation(annotatedType.getJsonViewAnnotation()));
+                Schema refSchema = new Schema().$ref(Components.COMPONENTS_SCHEMAS_REF + allOfRef.getName());
+                if (StringUtils.isBlank(allOfRef.getName())) {
+                    refSchema = allOfRef;
+                }
                 // allOf could have already being added during subtype resolving
                 if (composedSchema.getAllOf() == null || !composedSchema.getAllOf().contains(refSchema)) {
                     composedSchema.addAllOfItem(refSchema);
@@ -814,8 +1002,14 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                     .filter(c -> !(c.equals(Void.class)))
                     .collect(Collectors.toList());
             anyOfFiltered.forEach(c -> {
-                Schema anyOfRef = context.resolve(new AnnotatedType().type(c).jsonViewAnnotation(annotatedType.getJsonViewAnnotation()));
-                composedSchema.addAnyOfItem(new Schema().$ref(anyOfRef.getName()));
+                Schema anyOfRef = context.resolve(new AnnotatedType().components(annotatedType.getComponents()).type(c).jsonViewAnnotation(annotatedType.getJsonViewAnnotation()));
+                if (anyOfRef != null) {
+                    if (StringUtils.isNotBlank(anyOfRef.getName())) {
+                        composedSchema.addAnyOfItem(new Schema().$ref(Components.COMPONENTS_SCHEMAS_REF + anyOfRef.getName()));
+                    } else {
+                        composedSchema.addAnyOfItem(anyOfRef);
+                    }
+                }
                 // remove shared properties defined in the parent
                 if (isSubtype(beanDesc.getClassInfo(), c)) {
                     removeParentProperties(composedSchema, anyOfRef);
@@ -829,12 +1023,12 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                     .filter(c -> !(c.equals(Void.class)))
                     .collect(Collectors.toList());
             oneOfFiltered.forEach(c -> {
-                Schema oneOfRef = context.resolve(new AnnotatedType().type(c).jsonViewAnnotation(annotatedType.getJsonViewAnnotation()));
+                Schema oneOfRef = context.resolve(new AnnotatedType().components(annotatedType.getComponents()).type(c).jsonViewAnnotation(annotatedType.getJsonViewAnnotation()));
                 if (oneOfRef != null) {
                     if (StringUtils.isBlank(oneOfRef.getName())) {
                         composedSchema.addOneOfItem(oneOfRef);
                     } else {
-                        composedSchema.addOneOfItem(new Schema().$ref(oneOfRef.getName()));
+                        composedSchema.addOneOfItem(new Schema().$ref(Components.COMPONENTS_SCHEMAS_REF + oneOfRef.getName()));
                     }
                     // remove shared properties defined in the parent
                     if (isSubtype(beanDesc.getClassInfo(), c)) {
@@ -861,12 +1055,16 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
             context.defineModel(name, model, annotatedType, null);
         }
 
+        Schema.SchemaResolution resolvedSchemaResolution = AnnotationsUtils.resolveSchemaResolution(this.schemaResolution, resolvedSchemaAnnotation);
+
         if (model != null && annotatedType.isResolveAsRef() &&
-            (isComposedSchema || "object".equals(model.getType())) &&
+            (isComposedSchema || isObjectSchema(model)) &&
             StringUtils.isNotBlank(model.getName()))
         {
             if (context.getDefinedModels().containsKey(model.getName())) {
-                model = new Schema().$ref(constructRef(model.getName()));
+                if (!Schema.SchemaResolution.INLINE.equals(resolvedSchemaResolution)) {
+                    model = new Schema().$ref(constructRef(model.getName()));
+                }
             }
         } else if (model != null && model.get$ref() != null) {
             model = new Schema().$ref(StringUtils.isNotEmpty(model.get$ref()) ? model.get$ref() : model.getName());
@@ -891,6 +1089,73 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
         return model;
     }
 
+    private Annotation[] addGenericTypeArgumentAnnotationsForOptionalField(BeanPropertyDefinition propDef, Annotation[] annotations) {
+
+        boolean isNotOptionalType = Optional.ofNullable(propDef)
+                                            .map(BeanPropertyDefinition::getField)
+                                            .map(AnnotatedField::getAnnotated)
+                                            .map(field -> !(field.getType().equals(Optional.class)))
+                                            .orElse(false);
+
+        if (isNotOptionalType || isRecordType(propDef)) {
+            return annotations;
+        }
+
+        Stream<Annotation> genericTypeArgumentAnnotations = extractGenericTypeArgumentAnnotations(propDef);
+        return Stream.concat(Stream.of(annotations), genericTypeArgumentAnnotations).toArray(Annotation[]::new);
+    }
+
+    private Stream<Annotation> extractGenericTypeArgumentAnnotations(BeanPropertyDefinition propDef) {
+        if (isRecordType(propDef)){
+            return getRecordComponentAnnotations(propDef);
+        }
+        return Optional.ofNullable(propDef)
+                       .map(BeanPropertyDefinition::getField)
+                       .map(AnnotatedField::getAnnotated)
+                       .map(this::getGenericTypeArgumentAnnotations)
+                       .orElseGet(Stream::of);
+    }
+
+    private Stream<Annotation> getRecordComponentAnnotations(BeanPropertyDefinition propDef) {
+        try {
+            Method accessor = propDef.getPrimaryMember().getDeclaringClass().getDeclaredMethod(propDef.getPrimaryMember().getName());
+            return getGenericTypeArgumentAnnotations(accessor.getAnnotatedReturnType());
+        } catch (NoSuchMethodException e) {
+            LOGGER.error("Accessor for record component not found");
+            return Stream.empty();
+        }
+    }
+
+    private Boolean isRecordType(BeanPropertyDefinition propDef){
+        try {
+            if (propDef.getPrimaryMember() != null) {
+                Class<?> clazz = propDef.getPrimaryMember().getDeclaringClass();
+                Method isRecordMethod = Class.class.getMethod("isRecord");
+                return (Boolean) isRecordMethod.invoke(clazz);
+            } else {
+                return false;
+            }
+        } catch (NoSuchMethodException e) {
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private Stream<Annotation> getGenericTypeArgumentAnnotations(Field field) {
+        return getGenericTypeArgumentAnnotations(field.getAnnotatedType());
+    }
+
+    private Stream<Annotation> getGenericTypeArgumentAnnotations(java.lang.reflect.AnnotatedType annotatedType) {
+        return Optional.of(annotatedType)
+                .filter(type -> type instanceof AnnotatedParameterizedType)
+                .map(type -> (AnnotatedParameterizedType) type)
+                .map(AnnotatedParameterizedType::getAnnotatedActualTypeArguments)
+                .map(types -> Stream.of(types)
+                        .flatMap(type -> Stream.of(type.getAnnotations())))
+                .orElseGet(Stream::of);
+    }
+
     private boolean shouldResolveEnumAsRef(io.swagger.v3.oas.annotations.media.Schema resolvedSchemaAnnotation) {
         return (resolvedSchemaAnnotation != null && resolvedSchemaAnnotation.enumAsRef()) || ModelResolver.enumsAsRef;
     }
@@ -900,37 +1165,33 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
         // use recursion to check for method findJsonValueAccessor existence (Jackson 2.9+)
         // if not found use previous deprecated method which could lead to inaccurate result
         try {
-            Method m = BeanDescription.class.getMethod("findJsonValueAccessor");
-            AnnotatedMember jsonValueMember = (AnnotatedMember)m.invoke(beanDesc);
+            AnnotatedMember jsonValueMember = invokeMethod(beanDesc, "findJsonValueAccessor");
             if (jsonValueMember != null) {
                 return jsonValueMember.getType();
             }
-        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+            return null;
+        } catch (Exception e) {
             LOGGER.warn("jackson BeanDescription.findJsonValueAccessor not found, this could lead to inaccurate result, please update jackson to 2.9+");
-            final AnnotatedMethod jsonValueMethod  = beanDesc.findJsonValueMethod();
-            if (jsonValueMethod != null) {
-                return jsonValueMethod.getType();
+        }
+
+        try {
+            AnnotatedMember jsonValueMember = invokeMethod(beanDesc, "findJsonValueMethod");
+            if (jsonValueMember != null) {
+                return jsonValueMember.getType();
             }
+        } catch (Exception e) {
+            LOGGER.error("Neither 'findJsonValueMethod' nor 'findJsonValueAccessor' found in jackson BeanDescription. Please verify your Jackson version.");
         }
         return null;
     }
 
     private Schema clone(Schema property) {
-        if(property == null)
-            return property;
-        try {
-            String cloneName = property.getName();
-            property = Json.mapper().readValue(Json.pretty(property), Schema.class);
-            property.setName(cloneName);
-        } catch (IOException e) {
-            LOGGER.error("Could not clone property", e);
-        }
-        return property;
+        return AnnotationsUtils.clone(property, openapi31);
     }
 
     private boolean isSubtype(AnnotatedClass childClass, Class<?> parentClass) {
         final BeanDescription parentDesc = _mapper.getSerializationConfig().introspectClassAnnotations(parentClass);
-        List<NamedType> subTypes =_intr.findSubtypes(parentDesc.getClassInfo());
+        List<NamedType> subTypes = _intr().findSubtypes(parentDesc.getClassInfo());
         if (subTypes == null) {
             return false;
         }
@@ -949,33 +1210,53 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                 .contains(propType.getRawClass().getCanonicalName());
     }
 
+    /**
+     * Adds each enum property value to the model schema
+     *
+     * @param propClass the enum class for which to add properties
+     * @param property the schema to add properties to
+     */
     protected void _addEnumProps(Class<?> propClass, Schema property) {
         final boolean useIndex = _mapper.isEnabled(SerializationFeature.WRITE_ENUMS_USING_INDEX);
         final boolean useToString = _mapper.isEnabled(SerializationFeature.WRITE_ENUMS_USING_TO_STRING);
 
-
-        Optional<Method> jsonValueMethod = Arrays.stream(propClass.getMethods())
+        Optional<Method> jsonValueMethod = Arrays.stream(propClass.getDeclaredMethods())
                 .filter(m -> m.isAnnotationPresent(JsonValue.class))
                 .filter(m -> m.getAnnotation(JsonValue.class).value())
                 .findFirst();
 
+        Optional<Field> jsonValueField = Arrays.stream(propClass.getDeclaredFields())
+                .filter(f -> f.isAnnotationPresent(JsonValue.class))
+                .filter(f -> f.getAnnotation(JsonValue.class).value())
+                .findFirst();
+
+        jsonValueMethod.ifPresent(m -> m.setAccessible(true));
+        jsonValueField.ifPresent(m -> m.setAccessible(true));
         @SuppressWarnings("unchecked")
         Class<Enum<?>> enumClass = (Class<Enum<?>>) propClass;
 
         Enum<?>[] enumConstants = enumClass.getEnumConstants();
+
         if (enumConstants != null) {
-            String[] enumValues = _intr.findEnumValues(propClass, enumConstants,
+            String[] enumValues = _intr().findEnumValues(propClass, enumConstants,
                 new String[enumConstants.length]);
 
             for (Enum<?> en : enumConstants) {
                 String n;
 
-                String enumValue = enumValues[en.ordinal()];
-                String s = jsonValueMethod.flatMap(m -> ReflectionUtils.safeInvoke(m, en))
-                    .map(Object::toString).orElse(null);
+                Field enumField = ReflectionUtils.findField(en.name(), enumClass);
+                if (null != enumField && enumField.isAnnotationPresent(Hidden.class)) {
+                    continue;
+                }
 
-                if (s != null) {
-                    n = s;
+                String enumValue = enumValues[en.ordinal()];
+                String methodValue = jsonValueMethod.flatMap(m -> ReflectionUtils.safeInvoke(m, en)).map(Object::toString).orElse(null);
+                String fieldValue = jsonValueField.flatMap(f -> ReflectionUtils.safeGet(f, en)).map(Object::toString).orElse(null);
+
+                if (methodValue != null) {
+                    n = methodValue;
+                } else if (fieldValue != null) {
+                    n = fieldValue;
                 } else if (enumValue != null) {
                     n = enumValue;
                 } else if (useIndex) {
@@ -983,7 +1264,7 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                 } else if (useToString) {
                     n = en.toString();
                 } else {
-                    n = _intr.findEnumValue(en);
+                    n = _intr().findEnumValue(en);
                 }
                 if (property instanceof StringSchema) {
                     StringSchema sp = (StringSchema) property;
@@ -1076,6 +1357,18 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
         }
     }
 
+    public Schema.SchemaResolution getSchemaResolution() {
+        return schemaResolution;
+    }
+
+    public void setSchemaResolution(Schema.SchemaResolution schemaResolution) {
+        this.schemaResolution = schemaResolution;
+    }
+
+    public ModelResolver schemaResolution(Schema.SchemaResolution schemaResolution) {
+        setSchemaResolution(schemaResolution);
+        return this;
+    }
 
     private class GeneratorWrapper {
 
@@ -1127,6 +1420,7 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                                     .ctxAnnotations(annotations)
                                     .jsonViewAnnotation(type.getJsonViewAnnotation())
                                     .schemaProperty(true)
+                                    .components(type.getComponents())
                                     .propertyName(type.getPropertyName());
 
                             return context.resolve(aType);
@@ -1265,18 +1559,28 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                     .type(type.getType())
                     .skipJsonIdentity(true)
                     .propertyName(type.getPropertyName())
+                    .components(type.getComponents())
                     .ctxAnnotations(AnnotationsUtils.removeAnnotations(type.getCtxAnnotations(), JsonIdentityInfo.class, JsonIdentityReference.class));
         }
     }
 
-    protected void applyBeanValidatorAnnotations(Schema property, Annotation[] annotations, Schema parent) {
+    protected void applyBeanValidatorAnnotations(BeanPropertyDefinition propDef, Schema property, Annotation[] annotations, Schema parent, boolean applyNotNullAnnotations) {
+        applyBeanValidatorAnnotations(property, annotations, parent, applyNotNullAnnotations);
+
+        if (Objects.nonNull(property.getItems())) {
+            Annotation[] genericTypeArgumentAnnotations = extractGenericTypeArgumentAnnotations(propDef).toArray(Annotation[]::new);
+            applyBeanValidatorAnnotations(property.getItems(), genericTypeArgumentAnnotations, property, applyNotNullAnnotations);
+        }
+    }
+
+    protected void applyBeanValidatorAnnotations(Schema property, Annotation[] annotations, Schema parent, boolean applyNotNullAnnotations) {
         Map<String, Annotation> annos = new HashMap<>();
         if (annotations != null) {
             for (Annotation anno : annotations) {
                 annos.put(anno.annotationType().getName(), anno);
             }
         }
-        if (parent != null && annotations != null) {
+        if (parent != null && annotations != null && applyNotNullAnnotations) {
             boolean requiredItem = Arrays.stream(annotations).anyMatch(annotation ->
                     NOT_NULL_ANNOTATIONS.contains(annotation.annotationType().getSimpleName())
             );
@@ -1285,64 +1589,59 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
             }
         }
         if (annos.containsKey("javax.validation.constraints.Min")) {
-            if ("integer".equals(property.getType()) || "number".equals(property.getType())) {
+            if (isNumberSchema(property)) {
                 Min min = (Min) annos.get("javax.validation.constraints.Min");
                 property.setMinimum(new BigDecimal(min.value()));
             }
         }
         if (annos.containsKey("javax.validation.constraints.Max")) {
-            if ("integer".equals(property.getType()) || "number".equals(property.getType())) {
+            if (isNumberSchema(property)) {
                 Max max = (Max) annos.get("javax.validation.constraints.Max");
                 property.setMaximum(new BigDecimal(max.value()));
             }
         }
         if (annos.containsKey("javax.validation.constraints.Size")) {
             Size size = (Size) annos.get("javax.validation.constraints.Size");
-            if ("integer".equals(property.getType()) || "number".equals(property.getType())) {
+            if (isNumberSchema(property)) {
                 property.setMinimum(new BigDecimal(size.min()));
                 property.setMaximum(new BigDecimal(size.max()));
-            } else if (property instanceof StringSchema) {
-                StringSchema sp = (StringSchema) property;
-                sp.minLength(Integer.valueOf(size.min()));
-                sp.maxLength(Integer.valueOf(size.max()));
-            } else if (property instanceof ArraySchema) {
-                ArraySchema sp = (ArraySchema) property;
-                sp.setMinItems(size.min());
-                sp.setMaxItems(size.max());
+            }
+            if (isStringSchema(property)) {
+                property.setMinLength(Integer.valueOf(size.min()));
+                property.setMaxLength(Integer.valueOf(size.max()));
+            }
+            if (isArraySchema(property)) {
+                property.setMinItems(size.min());
+                property.setMaxItems(size.max());
             }
         }
         if (annos.containsKey("javax.validation.constraints.DecimalMin")) {
             DecimalMin min = (DecimalMin) annos.get("javax.validation.constraints.DecimalMin");
-            if (property instanceof NumberSchema) {
-                NumberSchema ap = (NumberSchema) property;
-                ap.setMinimum(new BigDecimal(min.value()));
-                ap.setExclusiveMinimum(!min.inclusive());
+            if (isNumberSchema(property)) {
+                property.setMinimum(new BigDecimal(min.value()));
+                property.setExclusiveMinimum(!min.inclusive());
             }
         }
         if (annos.containsKey("javax.validation.constraints.DecimalMax")) {
             DecimalMax max = (DecimalMax) annos.get("javax.validation.constraints.DecimalMax");
-            if (property instanceof NumberSchema) {
-                NumberSchema ap = (NumberSchema) property;
-                ap.setMaximum(new BigDecimal(max.value()));
-                ap.setExclusiveMaximum(!max.inclusive());
+            if (isNumberSchema(property)) {
+                property.setMaximum(new BigDecimal(max.value()));
+                property.setExclusiveMaximum(!max.inclusive());
             }
         }
         if (annos.containsKey("javax.validation.constraints.Pattern")) {
             Pattern pattern = (Pattern) annos.get("javax.validation.constraints.Pattern");
-
-            if (property instanceof StringSchema) {
+            if (isStringSchema(property)) {
                 property.setPattern(pattern.regexp());
             }
-
-            if(property.getItems() != null && property.getItems() instanceof StringSchema) {
+            if(property.getItems() != null && isStringSchema(property.getItems())) {
                 property.getItems().setPattern(pattern.regexp());
             }
-
         }
     }
 
-    private boolean resolveSubtypes(Schema model, BeanDescription bean, ModelConverterContext context) {
-        final List<NamedType> types = _intr.findSubtypes(bean.getClassInfo());
+    private boolean resolveSubtypes(Schema model, BeanDescription bean, ModelConverterContext context, JsonView jsonViewAnnotation) {
+        final List<NamedType> types = _intr().findSubtypes(bean.getClassInfo());
         if (types == null) {
             return false;
         }
@@ -1369,7 +1668,8 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                 continue;
             }
 
-            final Schema subtypeModel = context.resolve(new AnnotatedType().type(subtypeType));
+            final Schema subtypeModel = context.resolve(new AnnotatedType().type(subtypeType)
+                .jsonViewAnnotation(jsonViewAnnotation));
 
             if (    StringUtils.isBlank(subtypeModel.getName()) ||
                     subtypeModel.getName().equals(model.getName())) {
@@ -1477,7 +1777,7 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
     private void removeSuperSubTypes(List<NamedType> resultTypes, Class<?> superClass) {
         JavaType superType = _mapper.constructType(superClass);
         BeanDescription superBean = _mapper.getSerializationConfig().introspect(superType);
-        final List<NamedType> superTypes = _intr.findSubtypes(superBean.getClassInfo());
+        final List<NamedType> superTypes = _intr().findSubtypes(superBean.getClassInfo());
         if (superTypes != null) {
             resultTypes.removeAll(superTypes);
         }
@@ -1639,6 +1939,60 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
         return schemaProperties;
     }
 
+    protected Map<String, Schema> resolveDependentSchemas(JavaType a, Annotation[] annotations, ModelConverterContext context, Components components, JsonView jsonViewAnnotation, boolean openapi31) {
+        final Map<String, DependentSchema> dependentSchemaMap = new LinkedHashMap<>();
+
+        DependentSchemas dependentSchemasAnnotation = a.getRawClass().getAnnotation(DependentSchemas.class);
+        if (dependentSchemasAnnotation != null && dependentSchemasAnnotation.value().length > 0) {
+            for (DependentSchema dependentSchemaAnnotation : dependentSchemasAnnotation.value()) {
+                dependentSchemaMap.put(dependentSchemaAnnotation.name(), dependentSchemaAnnotation);
+            }
+        }
+
+        DependentSchema singleDependentSchema = a.getRawClass().getAnnotation(DependentSchema.class);
+        if (singleDependentSchema != null) {
+            dependentSchemaMap.put(singleDependentSchema.name(), singleDependentSchema);
+        }
+
+        dependentSchemasAnnotation = AnnotationsUtils.getAnnotation(DependentSchemas.class, annotations);
+        if (dependentSchemasAnnotation != null && dependentSchemasAnnotation.value().length > 0) {
+            for (DependentSchema dependentSchemaAnnotation : dependentSchemasAnnotation.value()) {
+                dependentSchemaMap.put(dependentSchemaAnnotation.name(), dependentSchemaAnnotation);
+            }
+        }
+
+        singleDependentSchema = AnnotationsUtils.getAnnotation(DependentSchema.class, annotations);
+        if (singleDependentSchema != null) {
+            dependentSchemaMap.put(singleDependentSchema.name(), singleDependentSchema);
+        }
+
+        if (dependentSchemaMap.isEmpty()) {
+            return null;
+        }
+
+        Map<String, Schema> dependentSchemas = new LinkedHashMap<>();
+
+        for (DependentSchema dependentSchemaAnnotation: dependentSchemaMap.values()) {
+            String name = dependentSchemaAnnotation.name();
+            if (StringUtils.isBlank(name)) {
+                continue;
+            }
+            Annotation[] propAnnotations = new Annotation[]{dependentSchemaAnnotation.schema(), dependentSchemaAnnotation.array()};
+            Schema existingSchema = null;
+            Optional<Schema> resolvedPropSchema = AnnotationsUtils.getSchemaFromAnnotation(dependentSchemaAnnotation.schema(), components, jsonViewAnnotation, openapi31, null, Schema.SchemaResolution.DEFAULT, context);
+            if (resolvedPropSchema.isPresent()) {
+                existingSchema = resolvedPropSchema.get();
+                dependentSchemas.put(name, existingSchema);
+            }
+            resolvedPropSchema = AnnotationsUtils.getArraySchema(dependentSchemaAnnotation.array(), components, jsonViewAnnotation, openapi31, existingSchema);
+            if (resolvedPropSchema.isPresent()) {
+                dependentSchemas.put(name, resolvedPropSchema.get());
+            }
+        }
+
+        return dependentSchemas;
+    }
+
     protected Object resolveDefaultValue(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schema) {
         if (schema != null) {
             if (!schema.defaultValue().isEmpty()) {
@@ -1686,6 +2040,15 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
         }
 
         return null;
+    }
+
+    protected io.swagger.v3.oas.annotations.media.Schema.RequiredMode resolveRequiredMode(io.swagger.v3.oas.annotations.media.Schema schema) {
+        if (schema != null && !schema.requiredMode().equals(io.swagger.v3.oas.annotations.media.Schema.RequiredMode.AUTO)) {
+            return schema.requiredMode();
+        } else if (schema != null && schema.required()) {
+            return io.swagger.v3.oas.annotations.media.Schema.RequiredMode.REQUIRED;
+        }
+        return io.swagger.v3.oas.annotations.media.Schema.RequiredMode.AUTO;
     }
 
     protected io.swagger.v3.oas.annotations.media.Schema.AccessMode resolveAccessMode(BeanPropertyDefinition propDef, JavaType type, io.swagger.v3.oas.annotations.media.Schema schema) {
@@ -1921,7 +2284,7 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
         if (schema != null &&
                 schema.extensions() != null &&
                 schema.extensions().length > 0) {
-            return AnnotationsUtils.getExtensions(schema.extensions());
+            return AnnotationsUtils.getExtensions(openapi31, schema.extensions());
         }
         return null;
     }
@@ -1934,7 +2297,7 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
             if (StringUtils.isNotBlank(typeInfoProp)) {
                 Schema modelToUpdate = model;
                 if (StringUtils.isNotBlank(model.get$ref())) {
-                    modelToUpdate = context.getDefinedModels().get(model.get$ref().substring(21));
+                    modelToUpdate = context.getDefinedModels().get(model.get$ref().substring(SCHEMA_COMPONENT_PREFIX));
                 }
                 if (modelToUpdate.getProperties() == null || !modelToUpdate.getProperties().keySet().contains(typeInfoProp)) {
                     Schema discriminatorSchema = new StringSchema().name(typeInfoProp);
@@ -2013,10 +2376,18 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
     }
 
     protected XML resolveXml(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schema) {
-        // if XmlRootElement annotation, construct an Xml object and attach it to the model
+        // if XmlRootElement annotation, construct a Xml object and attach it to the model
         XmlRootElement rootAnnotation = null;
+        XmlSchema xmlSchema = null;
         if (a != null) {
             rootAnnotation = a.getAnnotation(XmlRootElement.class);
+            Class<?> rawType = a.getRawType();
+            if (rawType != null) {
+                Package aPackage = rawType.getPackage();
+                if (aPackage != null) {
+                    xmlSchema = aPackage.getAnnotation(XmlSchema.class);
+                }
+            }
         }
         if (rootAnnotation == null) {
             if (annotations != null) {
@@ -2028,9 +2399,14 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
                 }
             }
         }
+
         if (rootAnnotation != null && !"".equals(rootAnnotation.name()) && !JAXB_DEFAULT.equals(rootAnnotation.name())) {
             XML xml = new XML().name(rootAnnotation.name());
-            if (rootAnnotation.namespace() != null && !"".equals(rootAnnotation.namespace()) && !JAXB_DEFAULT.equals(rootAnnotation.namespace())) {
+            if (xmlSchema != null && isNonTrivialXmlNamespace(xmlSchema.namespace())) {
+                xml.namespace(xmlSchema.namespace());
+            }
+            // Let XmlRootElement overwrite global XmlSchema namespace if present
+            if (isNonTrivialXmlNamespace(rootAnnotation.namespace())) {
                 xml.namespace(rootAnnotation.namespace());
             }
             return xml;
@@ -2038,12 +2414,18 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
         return null;
     }
 
+    private boolean isNonTrivialXmlNamespace(String namespace) {
+        return namespace != null && !"".equals(namespace) && !JAXB_DEFAULT.equals(namespace);
+    }
+
     protected Set<String> resolveIgnoredProperties(Annotations a, Annotation[] annotations) {
 
         Set<String> propertiesToIgnore = new HashSet<>();
         JsonIgnoreProperties ignoreProperties = a.get(JsonIgnoreProperties.class);
         if (ignoreProperties != null) {
-            propertiesToIgnore.addAll(Arrays.asList(ignoreProperties.value()));
+        	if(!ignoreProperties.allowGetters()) {
+        		propertiesToIgnore.addAll(Arrays.asList(ignoreProperties.value()));
+        	}
         }
         propertiesToIgnore.addAll(resolveIgnoredProperties(annotations));
         return propertiesToIgnore;
@@ -2055,8 +2437,10 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
         if (annotations != null) {
             for (Annotation annotation : annotations) {
                 if (annotation instanceof JsonIgnoreProperties) {
-                    propertiesToIgnore.addAll(Arrays.asList(((JsonIgnoreProperties) annotation).value()));
-                    break;
+                    if (!((JsonIgnoreProperties) annotation).allowGetters()) {
+                        propertiesToIgnore.addAll(Arrays.asList(((JsonIgnoreProperties) annotation).value()));
+                        break;
+                    }
                 }
             }
         }
@@ -2094,13 +2478,216 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
         if (arraySchema != null &&
                 arraySchema.extensions() != null &&
                 arraySchema.extensions().length > 0) {
-            return AnnotationsUtils.getExtensions(arraySchema.extensions());
+            return AnnotationsUtils.getExtensions(openapi31, arraySchema.extensions());
         }
         return null;
     }
 
+    protected Integer resolveMaxContains(AnnotatedType a, io.swagger.v3.oas.annotations.media.ArraySchema arraySchema) {
+        if (arraySchema != null && arraySchema.maxContains() > 0) {
+            return arraySchema.maxContains();
+        }
+        return null;
+    }
+
+    protected Integer resolveMinContains(AnnotatedType a, io.swagger.v3.oas.annotations.media.ArraySchema arraySchema) {
+        if (arraySchema != null && arraySchema.minContains() > 0) {
+            return arraySchema.minContains();
+        }
+        return null;
+    }
+
+    protected BigDecimal resolveExclusiveMaximumValue(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schema) {
+        if (schema != null && schema.exclusiveMaximumValue() > 0) {
+            return new BigDecimal(schema.exclusiveMaximumValue());
+        }
+        return null;
+    }
+
+    protected BigDecimal resolveExclusiveMinimumValue(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schema) {
+        if (schema != null && schema.exclusiveMinimumValue() > 0) {
+            return new BigDecimal(schema.exclusiveMinimumValue());
+        }
+        return null;
+    }
+
+    protected String resolveId(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schema) {
+        if (schema != null && StringUtils.isNotBlank(schema.$id())) {
+            return schema.$id();
+        }
+        return null;
+    }
+
+    protected String resolve$schema(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schema) {
+        if (schema != null && StringUtils.isNotBlank(schema.$schema())) {
+            return schema.$schema();
+        }
+        return null;
+    }
+
+    protected String resolve$anchor(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schema) {
+        if (schema != null && StringUtils.isNotBlank(schema.$anchor())) {
+            return schema.$anchor();
+        }
+        return null;
+    }
+
+    protected String resolve$comment(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schema) {
+        if (schema != null && StringUtils.isNotBlank(schema.$comment())) {
+            return schema.$comment();
+        }
+        return null;
+    }
+
+    protected String resolve$vocabulary(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schema) {
+        if (schema != null && StringUtils.isNotBlank(schema.$vocabulary())) {
+            return schema.$vocabulary();
+        }
+        return null;
+    }
+
+    protected String resolve$dynamicAnchor(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schema) {
+        if (schema != null && StringUtils.isNotBlank(schema.$dynamicAnchor())) {
+            return schema.$dynamicAnchor();
+        }
+        return null;
+    }
+
+    protected String resolveContentEncoding(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schema) {
+        if (schema != null && StringUtils.isNotBlank(schema.contentEncoding())) {
+            return schema.contentEncoding();
+        }
+        return null;
+    }
+
+    protected String resolveContentMediaType(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schema) {
+        if (schema != null && StringUtils.isNotBlank(schema.contentMediaType())) {
+            return schema.contentMediaType();
+        }
+         return null;
+    }
+
+    protected void resolveContains(AnnotatedType annotatedType, ArraySchema arraySchema, io.swagger.v3.oas.annotations.media.ArraySchema arraySchemaAnnotation) {
+        final io.swagger.v3.oas.annotations.media.Schema containsAnnotation = arraySchemaAnnotation.contains();
+        final Schema contains = new Schema();
+        if (containsAnnotation.types().length > 0) {
+            for (String type : containsAnnotation.types()) {
+                contains.addType(type);
+            }
+        }
+        arraySchema.setContains(contains);
+        resolveSchemaMembers(contains, null, null, containsAnnotation);
+
+        Integer maxContains = resolveMaxContains(annotatedType, arraySchemaAnnotation);
+        if (maxContains != null) {
+            arraySchema.setMaxContains(maxContains);
+        }
+        Integer minContains = resolveMinContains(annotatedType, arraySchemaAnnotation);
+        if (minContains != null) {
+            arraySchema.setMinContains(minContains);
+        }
+    }
+
+    protected void resolveUnevaluatedItems(AnnotatedType annotatedType, ArraySchema arraySchema, io.swagger.v3.oas.annotations.media.ArraySchema arraySchemaAnnotation) {
+        final io.swagger.v3.oas.annotations.media.Schema unevaluatedItemsAnnotation = arraySchemaAnnotation.unevaluatedItems();
+        final Schema unevaluatedItems = new Schema();
+        if (StringUtils.isNotBlank(unevaluatedItemsAnnotation.type())) {
+            unevaluatedItems.addType(unevaluatedItemsAnnotation.type());
+        }
+        if (unevaluatedItemsAnnotation.types().length > 0) {
+            for (String type : unevaluatedItemsAnnotation.types()) {
+                unevaluatedItems.addType(type);
+            }
+        }
+        arraySchema.setUnevaluatedItems(unevaluatedItems);
+        resolveSchemaMembers(unevaluatedItems, null, null, unevaluatedItemsAnnotation);
+    }
+
+    protected String resolveConst(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schema) {
+        if (schema != null && StringUtils.isNotBlank(schema._const())) {
+            return schema._const();
+        }
+        return null;
+    }
+
+    protected Map<String, List<String>> resolveDependentRequired(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schema) {
+        if (schema.dependentRequiredMap().length == 0) {
+            return null;
+        }
+        final Map<String, List<String>> dependentRequiredMap = new HashMap<>();
+        for (DependentRequired dependentRequired: schema.dependentRequiredMap()) {
+            final String name = dependentRequired.name();
+            if (dependentRequired.value().length == 0) {
+                continue;
+            }
+            final List<String> values = Arrays.asList(dependentRequired.value());
+            dependentRequiredMap.put(name, values);
+        }
+        return dependentRequiredMap;
+    }
+
+    protected Map<String, Schema> resolveDependentSchemas(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schemaAnnotation, AnnotatedType annotatedType, ModelConverterContext context, Iterator<ModelConverter> next) {
+        if (schemaAnnotation.dependentSchemas().length == 0) {
+            return null;
+        }
+        final Map<String, Schema> dependentSchemas = new HashMap<>();
+        for (StringToClassMapItem mapItem : schemaAnnotation.dependentSchemas()) {
+            final String key = mapItem.key();
+            if (mapItem.value() == null || Void.class.equals(mapItem.value())) {
+                continue;
+            }
+            final Schema schema = resolve(new AnnotatedType(mapItem.value()), context, next);
+            if (schema == null) {
+                continue;
+            }
+            dependentSchemas.put(key, schema);
+        }
+        return dependentSchemas;
+    }
+
+    protected Map<String, Schema> resolvePatternProperties(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schemaAnnotation, AnnotatedType annotatedType, ModelConverterContext context, Iterator<ModelConverter> next) {
+        if (schemaAnnotation.patternProperties().length == 0) {
+            return null;
+        }
+        final Map<String, Schema> patternPropertyMap = new HashMap<>();
+        for (StringToClassMapItem patternPropertyItem : schemaAnnotation.patternProperties()) {
+            final String key = patternPropertyItem.key();
+            if (Void.class.equals(patternPropertyItem.value())) {
+                continue;
+            }
+            final Schema schema = resolve(new AnnotatedType(patternPropertyItem.value()), context, next);
+            if (schema == null) {
+                continue;
+            }
+            patternPropertyMap.put(key, schema);
+        }
+        return patternPropertyMap;
+    }
+
+    protected Map<String, Schema> resolveProperties(Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schemaAnnotation, AnnotatedType annotatedType, ModelConverterContext context, Iterator<ModelConverter> next) {
+        if (schemaAnnotation.properties().length == 0) {
+            return null;
+        }
+        final Map<String, Schema> propertyMap = new HashMap<>();
+        for (StringToClassMapItem propertyItem : schemaAnnotation.properties()) {
+            final String key = propertyItem.key();
+            if (Void.class.equals(propertyItem.value())) {
+                continue;
+            }
+            final Schema schema = resolve(new AnnotatedType(propertyItem.value()), context, next);
+            if (schema == null) {
+                continue;
+            }
+            propertyMap.put(key, schema);
+        }
+        return propertyMap;
+    }
 
     protected void resolveSchemaMembers(Schema schema, AnnotatedType annotatedType) {
+        resolveSchemaMembers(schema, annotatedType, null, null);
+    }
+
+    protected void resolveSchemaMembers(Schema schema, AnnotatedType annotatedType, ModelConverterContext context, Iterator<ModelConverter> next) {
         final JavaType type;
         if (annotatedType.getType() instanceof JavaType) {
             type = (JavaType) annotatedType.getType();
@@ -2120,6 +2707,84 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
         Annotated a = beanDesc.getClassInfo();
         Annotation[] annotations = annotatedType.getCtxAnnotations();
         resolveSchemaMembers(schema, a, annotations, schemaAnnotation);
+        if (schemaAnnotation != null) {
+            if (schemaAnnotation.additionalProperties().equals(io.swagger.v3.oas.annotations.media.Schema.AdditionalPropertiesValue.TRUE)) {
+                schema.additionalProperties(true);
+            } else if (schemaAnnotation.additionalProperties().equals(io.swagger.v3.oas.annotations.media.Schema.AdditionalPropertiesValue.FALSE)) {
+                schema.additionalProperties(false);
+            } else {
+                if (!schemaAnnotation.additionalPropertiesSchema().equals(Void.class)) {
+                    Schema additionalPropertiesSchema = resolve(new AnnotatedType(schemaAnnotation.additionalPropertiesSchema()), context, next);
+                    additionalPropertiesSchema = buildRefSchemaIfObject(additionalPropertiesSchema, context);
+                    schema.additionalProperties(additionalPropertiesSchema);
+                }
+            }
+        }
+
+        if (openapi31 && schema != null && schemaAnnotation != null) {
+            if (!Void.class.equals(schemaAnnotation.contentSchema())) {
+                Schema contentSchema = resolve(new AnnotatedType(schemaAnnotation.contentSchema()), context, next);
+                contentSchema = buildRefSchemaIfObject(contentSchema, context);
+                schema.setContentSchema(contentSchema);
+            }
+            if (!Void.class.equals(schemaAnnotation.propertyNames())) {
+                Schema propertyNames = resolve(new AnnotatedType(schemaAnnotation.propertyNames()), context, next);
+                propertyNames = buildRefSchemaIfObject(propertyNames, context);
+                schema.setPropertyNames(propertyNames);
+            }
+            if (!Void.class.equals(schemaAnnotation._if())) {
+                Schema ifSchema = resolve(new AnnotatedType(schemaAnnotation._if()), context, next);
+                ifSchema = buildRefSchemaIfObject(ifSchema, context);
+                schema.setIf(ifSchema);
+            }
+            if (!Void.class.equals(schemaAnnotation._else())) {
+                Schema elseSchema = resolve(new AnnotatedType(schemaAnnotation._else()), context, next);
+                elseSchema = buildRefSchemaIfObject(elseSchema, context);
+                schema.setElse(elseSchema);
+            }
+            if (!Void.class.equals(schemaAnnotation.then())) {
+                Schema thenSchema = resolve(new AnnotatedType(schemaAnnotation.then()), context, next);
+                thenSchema = buildRefSchemaIfObject(thenSchema, context);
+                schema.setThen(thenSchema);
+            }
+            if (!Void.class.equals(schemaAnnotation.unevaluatedProperties())) {
+                Schema unevaluatedProperties = resolve(new AnnotatedType(schemaAnnotation.unevaluatedProperties()), context, next);
+                unevaluatedProperties = buildRefSchemaIfObject(unevaluatedProperties, context);
+                schema.setUnevaluatedProperties(unevaluatedProperties);
+            }
+
+            final Map<String, List<String>> dependentRequired =  resolveDependentRequired(a, annotations, schemaAnnotation);
+            if (dependentRequired != null && !dependentRequired.isEmpty()) {
+                schema.setDependentRequired(dependentRequired);
+            }
+            final Map<String, Schema> dependentSchemas = resolveDependentSchemas(a, annotations, schemaAnnotation, annotatedType, context, next);
+            if (dependentSchemas != null) {
+                final Map<String, Schema> processedDependentSchemas = new LinkedHashMap<>();
+                for (String key: dependentSchemas.keySet()) {
+                    Schema val = dependentSchemas.get(key);
+                    processedDependentSchemas.put(key, buildRefSchemaIfObject(val, context));
+                }
+                if (processedDependentSchemas != null && !processedDependentSchemas.isEmpty()) {
+                    if (schema.getDependentSchemas() == null) {
+                        schema.setDependentSchemas(processedDependentSchemas);
+                    } else {
+                        schema.getDependentSchemas().putAll(processedDependentSchemas);
+                    }
+                }
+            }
+            final Map<String, Schema> patternProperties = resolvePatternProperties(a, annotations, schemaAnnotation, annotatedType, context, next);
+            if (patternProperties != null && !patternProperties.isEmpty()) {
+                for (String key : patternProperties.keySet()) {
+                    schema.addPatternProperty(key, buildRefSchemaIfObject(patternProperties.get(key), context));
+                }
+            }
+            final Map<String, Schema> properties = resolveProperties(a, annotations, schemaAnnotation, annotatedType, context, next);
+            if (properties != null && !properties.isEmpty()) {
+                for (String key : properties.keySet()) {
+                    schema.addProperty(key, buildRefSchemaIfObject(properties.get(key), context));
+                }
+            }
+        }
     }
 
     protected void resolveSchemaMembers(Schema schema, Annotated a, Annotation[] annotations, io.swagger.v3.oas.annotations.media.Schema schemaAnnotation) {
@@ -2221,6 +2886,63 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
         if (extensions != null) {
             extensions.forEach(schema::addExtension);
         }
+
+        if (openapi31 && schemaAnnotation != null) {
+            for (String type : schemaAnnotation.types()) {
+                schema.addType(type);
+            }
+            BigDecimal exclusiveMaximumValue = resolveExclusiveMaximumValue(a, annotations, schemaAnnotation);
+            if (exclusiveMaximumValue != null) {
+                schema.setExclusiveMaximumValue(exclusiveMaximumValue);
+            }
+            BigDecimal exclusiveMinimumValue = resolveExclusiveMinimumValue(a, annotations, schemaAnnotation);
+            if (exclusiveMinimumValue != null) {
+                schema.setExclusiveMinimumValue(exclusiveMinimumValue);
+            }
+            String $id = resolveId(a, annotations, schemaAnnotation);
+            if ($id != null) {
+                schema.set$id($id);
+            }
+            String $schema = resolve$schema(a, annotations, schemaAnnotation);
+            if ($schema != null) {
+                schema.set$schema($schema);
+            }
+            String $anchor = resolve$anchor(a, annotations, schemaAnnotation);
+            if ($anchor != null) {
+                schema.set$anchor($anchor);
+            }
+            String $comment = resolve$comment(a, annotations, schemaAnnotation);
+            if ($comment != null) {
+                schema.set$comment($comment);
+            }
+            String $vocabulary = resolve$vocabulary(a, annotations, schemaAnnotation);
+            if ($vocabulary != null) {
+                schema.set$vocabulary($vocabulary);
+            }
+            String $dynamicAnchor = resolve$dynamicAnchor(a, annotations, schemaAnnotation);
+            if ($dynamicAnchor != null) {
+                schema.$dynamicAnchor($dynamicAnchor);
+            }
+            String contentEncoding = resolveContentEncoding(a, annotations, schemaAnnotation);
+            if (contentEncoding != null) {
+                schema.setContentEncoding(contentEncoding);
+            }
+            String contentMediaType = resolveContentMediaType(a, annotations, schemaAnnotation);
+            if (contentMediaType != null) {
+                schema.setContentMediaType(contentMediaType);
+            }
+            if (schemaAnnotation.examples().length > 0) {
+                if (schema.getExamples() == null || schema.getExamples().isEmpty()) {
+                    schema.setExamples(Arrays.asList(schemaAnnotation.examples()));
+                } else {
+                    schema.getExamples().addAll(Arrays.asList(schemaAnnotation.examples()));
+                }
+            }
+            String _const = resolveConst(a, annotations, schemaAnnotation);
+            if (_const != null) {
+                schema.setConst(_const);
+            }
+        }
     }
 
     protected void addRequiredItem(Schema model, String propName) {
@@ -2290,7 +3012,7 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
             return false;
 
         Class<?>[] filters = jsonView.value();
-        boolean containsJsonViewAnnotation = false;
+        boolean containsJsonViewAnnotation = !type.isIncludePropertiesWithoutJSONView();
         for (Annotation ant : annotations) {
             if (ant instanceof JsonView) {
                 containsJsonViewAnnotation = true;
@@ -2328,6 +3050,88 @@ public class ModelResolver extends AbstractModelConverter implements ModelConver
             if (AnnotationsUtils.hasSchemaAnnotation(resolvedArrayAnnotation.arraySchema())) {
                 resolveSchemaMembers(schema, null, null, resolvedArrayAnnotation.arraySchema());
             }
+            if (openapi31) {
+                if (AnnotationsUtils.hasSchemaAnnotation(resolvedArrayAnnotation.contains())) {
+                    resolveContains(annotatedType, schema, resolvedArrayAnnotation);
+                }
+                if (AnnotationsUtils.hasSchemaAnnotation(resolvedArrayAnnotation.unevaluatedItems())) {
+                    resolveUnevaluatedItems(annotatedType, schema, resolvedArrayAnnotation);
+                }
+                if (resolvedArrayAnnotation.prefixItems().length > 0) {
+                    for (io.swagger.v3.oas.annotations.media.Schema prefixItemAnnotation : resolvedArrayAnnotation.prefixItems()) {
+                        final Schema prefixItem = new Schema();
+                        if (StringUtils.isNotBlank(prefixItemAnnotation.type())) {
+                            prefixItem.addType(prefixItemAnnotation.type());
+                        }
+                        resolveSchemaMembers(prefixItem, null, null, prefixItemAnnotation);
+                        schema.addPrefixItem(prefixItem);
+                    }
+                }
+                // TODO `ArraySchema.items` is deprecated, when removed, remove this block
+                if (schema.getItems() != null && AnnotationsUtils.hasSchemaAnnotation(resolvedArrayAnnotation.items())) {
+                    for (String type : resolvedArrayAnnotation.items().types()) {
+                        schema.getItems().addType(type);
+                    }
+                }
+                if (schema.getItems() != null && AnnotationsUtils.hasSchemaAnnotation(resolvedArrayAnnotation.schema())) {
+                    for (String type : resolvedArrayAnnotation.schema().types()) {
+                        schema.getItems().addType(type);
+                    }
+                }
+            }
         }
+    }
+
+    public ModelResolver openapi31(boolean openapi31) {
+        this.openapi31 = openapi31;
+        return this;
+    }
+
+    public boolean isOpenapi31() {
+        return openapi31;
+    }
+
+    public void setOpenapi31(boolean openapi31) {
+        this.openapi31 = openapi31;
+    }
+
+    protected boolean isObjectSchema(Schema schema) {
+        return (schema.getTypes() != null && schema.getTypes().contains("object")) || "object".equals(schema.getType()) || (schema.getType() == null && schema.getProperties() != null && !schema.getProperties().isEmpty());
+    }
+
+    protected boolean isArraySchema(Schema schema){
+        return "array".equals(schema.getType()) || (schema.getTypes() != null && schema.getTypes().contains("array"));
+    }
+
+    protected boolean isStringSchema(Schema schema){
+        return "string".equals(schema.getType()) || (schema.getTypes() != null && schema.getTypes().contains("string"));
+    }
+
+    protected boolean isNumberSchema(Schema schema){
+        return "number".equals(schema.getType()) || (schema.getTypes() != null && schema.getTypes().contains("number")) || "integer".equals(schema.getType()) || (schema.getTypes() != null && schema.getTypes().contains("integer"));
+    }
+
+    private AnnotatedMember invokeMethod(final BeanDescription beanDesc, String methodName) throws NoSuchMethodException, IllegalAccessException, InvocationTargetException{
+        Method m = BeanDescription.class.getMethod(methodName);
+        return (AnnotatedMember) m.invoke(beanDesc);
+    }
+
+    protected Schema buildRefSchemaIfObject(Schema schema, ModelConverterContext context) {
+        if (schema == null) {
+            return null;
+        }
+        Schema result = schema;
+        if (isObjectSchema(schema) && StringUtils.isNotBlank(schema.getName())) {
+            if (context.getDefinedModels().containsKey(schema.getName())) {
+                result = new Schema().$ref(constructRef(schema.getName()));
+            }
+        }
+        return result;
+    }
+
+    protected boolean applySchemaResolution() {
+        return !openapi31 ||
+                        (Boolean.parseBoolean(System.getProperty(Schema.APPLY_SCHEMA_RESOLUTION_PROPERTY, "false")) ||
+                                Boolean.parseBoolean(System.getenv(Schema.APPLY_SCHEMA_RESOLUTION_PROPERTY)));
     }
 }

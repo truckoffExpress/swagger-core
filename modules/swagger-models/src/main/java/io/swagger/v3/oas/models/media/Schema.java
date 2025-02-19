@@ -1,6 +1,7 @@
 package io.swagger.v3.oas.models.media;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.models.annotations.OpenAPI30;
 import io.swagger.v3.oas.models.annotations.OpenAPI31;
 import io.swagger.v3.oas.models.Components;
@@ -20,11 +21,53 @@ import java.util.Set;
 /**
  * Schema
  *
- * @see "https://github.com/OAI/OpenAPI-Specification/blob/3.0.1/versions/3.0.1.md#schemaObject"
- * @see "https://github.com/OAI/OpenAPI-Specification/blob/3.1.0/versions/3.1.0.md#schemaObject"
+ * @see "https://github.com/OAI/OpenAPI-Specification/blob/3.0.4/versions/3.0.4.md#schema-object"
+ * @see "https://github.com/OAI/OpenAPI-Specification/blob/3.1.1/versions/3.1.1.md#schema-object"
  */
 
 public class Schema<T> {
+
+    public static final String BIND_TYPE_AND_TYPES = "bind-type";
+    public static final String BINARY_STRING_CONVERSION_PROPERTY = "binary-string-conversion";
+    public enum BynaryStringConversion {
+        BINARY_STRING_CONVERSION_BASE64("base64"),
+        BINARY_STRING_CONVERSION_DEFAULT_CHARSET("default"),
+        BINARY_STRING_CONVERSION_STRING_SCHEMA("string-schema");
+        private String value;
+
+        BynaryStringConversion(String value) {
+            this.value = value;
+        }
+
+        @Override
+        public String toString() {
+            return String.valueOf(value);
+        }
+    }
+
+    public static final String SCHEMA_RESOLUTION_PROPERTY = "schema-resolution";
+    public static final String APPLY_SCHEMA_RESOLUTION_PROPERTY = "apply-schema-resolution";
+    public enum SchemaResolution {
+        @JsonProperty("default")
+        DEFAULT("default"),
+        @JsonProperty("inline")
+        INLINE("inline"),
+        @JsonProperty("all-of")
+        ALL_OF("all-of"),
+        @JsonProperty("all-of-ref")
+        ALL_OF_REF("all-of-ref");
+
+        private String value;
+
+        SchemaResolution(String value) {
+            this.value = value;
+        }
+
+        @Override
+        public String toString() {
+            return String.valueOf(value);
+        }
+    }
 
     protected T _default;
 
@@ -46,6 +89,7 @@ public class Schema<T> {
     private Integer maxProperties = null;
     private Integer minProperties = null;
     private List<String> required = null;
+    @OpenAPI30
     private String type = null;
     private Schema not = null;
     private Map<String, Schema> properties = null;
@@ -148,6 +192,19 @@ public class Schema<T> {
      */
     @OpenAPI31
     private String $anchor;
+
+    /**
+     * @since 2.2.14 (OpenAPI 3.1.0)
+     */
+    @OpenAPI31
+    private String $vocabulary;
+
+    /**
+     * @since 2.2.14 (OpenAPI 3.1.0)
+     */
+    @OpenAPI31
+    private String $dynamicAnchor;
+
 
     /**
      * @since 2.2.0 (OpenAPI 3.1.0)
@@ -487,6 +544,62 @@ public class Schema<T> {
     @OpenAPI31
     public Schema $schema(String $schema) {
         this.$schema = $schema;
+        return this;
+    }
+
+    /**
+     *
+     * @since 2.2.8 (OpenAPI 3.1.0)
+     */
+    @OpenAPI31
+    public String get$vocabulary() {
+        return $vocabulary;
+    }
+
+    /**
+     *
+     * @since 2.2.8 (OpenAPI 3.1.0)
+     */
+    @OpenAPI31
+    public void set$vocabulary(String $vocabulary) {
+        this.$vocabulary = $vocabulary;
+    }
+
+    /**
+     *
+     * @since 2.2.8 (OpenAPI 3.1.0)
+     */
+    @OpenAPI31
+    public Schema $vocabulary(String $vocabulary) {
+        this.$vocabulary = $vocabulary;
+        return this;
+    }
+
+    /**
+     *
+     * @since 2.2.8 (OpenAPI 3.1.0)
+     */
+    @OpenAPI31
+    public String get$dynamicAnchor() {
+        return $dynamicAnchor;
+    }
+
+    /**
+     *
+     * @since 2.2.8 (OpenAPI 3.1.0)
+     */
+    @OpenAPI31
+    public void set$dynamicAnchor(String $dynamicAnchor) {
+        this.$dynamicAnchor = $dynamicAnchor;
+    }
+
+    /**
+     *
+     * @since 2.2.8 (OpenAPI 3.1.0)
+     */
+    @OpenAPI31
+    public Schema $dynamicAnchor(String $dynamicAnchor) {
+        this.$dynamicAnchor = $dynamicAnchor;
         return this;
     }
 
@@ -1110,6 +1223,10 @@ public class Schema<T> {
      **/
 
     public String getType() {
+        boolean bindTypes = Boolean.valueOf(System.getProperty(BIND_TYPE_AND_TYPES, "false"));
+        if (bindTypes && type == null && types != null && types.size() == 1) {
+            return types.iterator().next();
+        }
         return type;
     }
 
@@ -1442,6 +1559,19 @@ public class Schema<T> {
     @OpenAPI31
     public Schema prefixItems(List<Schema> prefixItems) {
         this.prefixItems = prefixItems;
+        return this;
+    }
+
+    /**
+     *
+     * @since 2.2.12 (OpenAPI 3.1.0)
+     */
+    @OpenAPI31
+    public Schema addPrefixItem(Schema prefixItem) {
+        if (this.prefixItems == null) {
+            this.prefixItems = new ArrayList<>();
+        }
+        this.prefixItems.add(prefixItem);
         return this;
     }
 
@@ -1953,6 +2083,8 @@ public class Schema<T> {
                 Objects.equals(this.$id, schema.$id) &&
                 Objects.equals(this.$anchor, schema.$anchor) &&
                 Objects.equals(this.$schema, schema.$schema) &&
+                Objects.equals(this.$vocabulary, schema.$vocabulary) &&
+                Objects.equals(this.$dynamicAnchor, schema.$dynamicAnchor) &&
                 Objects.equals(this.types, schema.types) &&
                 Objects.equals(this.allOf, schema.allOf) &&
                 Objects.equals(this.anyOf, schema.anyOf) &&
@@ -1987,7 +2119,7 @@ public class Schema<T> {
                 exclusiveMinimum, exclusiveMinimumValue, maxLength, minLength, pattern, maxItems, minItems, uniqueItems,
                 maxProperties, minProperties, required, type, not, properties, additionalProperties, description,
                 format, $ref, nullable, readOnly, writeOnly, example, externalDocs, deprecated, xml, extensions,
-                discriminator, _enum, _default, patternProperties, $id, $anchor, $schema, types, allOf, anyOf, oneOf, _const,
+                discriminator, _enum, _default, patternProperties, $id, $anchor, $schema, $vocabulary, $dynamicAnchor, types, allOf, anyOf, oneOf, _const,
                 contentEncoding, contentMediaType, contentSchema, propertyNames, unevaluatedProperties, maxContains,
                 minContains, additionalItems, unevaluatedItems, _if, _else, then, dependentRequired, dependentSchemas,
                 $comment, examples, prefixItems, items);
@@ -2059,6 +2191,8 @@ public class Schema<T> {
             sb.append("    $id: ").append(toIndentedString($id)).append("\n");
             sb.append("    $anchor: ").append(toIndentedString($anchor)).append("\n");
             sb.append("    $schema: ").append(toIndentedString($schema)).append("\n");
+            sb.append("    $vocabulary: ").append(toIndentedString($vocabulary)).append("\n");
+            sb.append("    $dynamicAnchor: ").append(toIndentedString($dynamicAnchor)).append("\n");
             sb.append("    const: ").append(toIndentedString(_const)).append("\n");
             sb.append("    contentEncoding: ").append(toIndentedString(contentEncoding)).append("\n");
             sb.append("    contentMediaType: ").append(toIndentedString(contentMediaType)).append("\n");

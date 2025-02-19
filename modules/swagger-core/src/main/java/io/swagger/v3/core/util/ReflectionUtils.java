@@ -34,7 +34,7 @@ public class ReflectionUtils {
         try {
             return loadClassByName(type);
         } catch (Exception e) {
-            LOGGER.error(String.format("Failed to resolve '%s' into class", type), e);
+            LOGGER.warn(String.format("Failed to resolve '%s' into class", type), e);
         }
         return null;
     }
@@ -158,6 +158,24 @@ public class ReflectionUtils {
             }
         }
         return result;
+    }
+
+    /**
+     * Searches the field name in given class cls. If the field is found returns it, else return null.
+     *
+     * @param name is the field to search
+     * @param cls  is the class or interface where to search
+     * @return field if it is found
+     */
+    public static Field findField(String name, Class<?> cls) {
+        if (cls == null) {
+            return null;
+        }
+        try {
+            return cls.getField(name);
+        } catch (NoSuchFieldException nsfe) {
+            return null;
+        }
     }
 
     /**
@@ -422,6 +440,10 @@ public class ReflectionUtils {
     }
 
     public static boolean isSystemType(JavaType type) {
+        return isSystemTypeNotArray(type) ? true : type.isArrayType();
+    }
+
+    public static boolean isSystemTypeNotArray(JavaType type) {
         // used while resolving container types to skip resolving system types; possibly extend by checking classloader
         // and/or other packages
         for (String systemPrefix: PrimitiveType.systemPrefixes()) {
@@ -432,13 +454,36 @@ public class ReflectionUtils {
                 }
             }
         }
-        return type.isArrayType();
+        return false;
     }
 
+    /**
+     * A utility method to get an optional containing result from method or empty optional if unable to access
+     *
+     * @param method from reflect, a method of a class or interface
+     * @param obj the class object in which the method exists
+     * @param args varags of the parameters passed to the method
+     * @return the result of the method, or empty conditional
+     */
     public static Optional<Object> safeInvoke(Method method, Object obj, Object... args) {
         try {
             return Optional.ofNullable(method.invoke(obj, args));
         } catch (IllegalAccessException | InvocationTargetException e) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * A utility method to get an optional containing value of field or empty optional if unable to access
+     *
+     * @param field from reflect, a field of a class or interface
+     * @param obj the class object in which the field exists
+     * @return optional containing the value of the field on the specified object, or empty optional
+     */
+    public static Optional<Object> safeGet(Field field, Object obj) {
+        try {
+            return Optional.ofNullable(field.get(obj));
+        } catch (IllegalAccessException e) {
             return Optional.empty();
         }
 
